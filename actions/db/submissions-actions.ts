@@ -5,19 +5,52 @@
  *
  * @description
  * Server-side actions to manage PR submissions for a given project.
- * This includes:
- *  - createSubmissionAction: Insert a new row for a student's PR link.
- *  - getSubmissionsByProjectAction: Fetch all submissions for a given project.
- *
- * Improvements:
- * - Check if the project is open before allowing the creation of a new submission.
- * - Block the owner from submitting to their own project (studentAddress != projectOwner).
+ * - createSubmissionAction: Insert a new row for a student's PR link.
+ * - getSubmissionsByProjectAction: Fetch all submissions for a given project.
  */
 
 import { db } from "@/db/db"
 import { projectSubmissionsTable } from "@/db/schema/project-submissions-schema"
 import { projectsTable } from "@/db/schema/projects-schema"
 import { eq } from "drizzle-orm"
+
+/**
+ * We define a utility function to parse the PR link:
+ * Example: https://github.com/consentsam/demo-project-ledger/pull/2
+ *  - owner: consentsam
+ *  - repo: demo-project-ledger
+ *  - prNumber: 2
+ *
+ * We'll do a simple regex or string-split approach.
+ */
+function extractRepoInfoFromLink(prLink: string) {
+  // This pattern should match: https://github.com/<owner>/<repo>/pull/<number>
+  // We'll be naive and assume it always matches. In production, handle errors carefully!
+  try {
+    const url = new URL(prLink)
+    // path = /consentsam/demo-project-ledger/pull/2
+    const segments = url.pathname.split("/")
+    // segments[1] = "consentsam"
+    // segments[2] = "demo-project-ledger"
+    // segments[3] = "pull"
+    // segments[4] = "2"
+    if (segments.length >= 5 && segments[3] === "pull") {
+      return {
+        repoOwner: segments[1],
+        repoName: segments[2],
+        prNumber: parseInt(segments[4], 10),
+      }
+    }
+  } catch (err) {
+    // If it fails to parse, fallback or return placeholders
+  }
+  // Fallback if something weird
+  return {
+    repoOwner: "placeholder",
+    repoName: "placeholder",
+    prNumber: 0,
+  }
+}
 
 interface SubmissionParams {
   projectId: string
@@ -31,15 +64,6 @@ interface ActionResult<T = any> {
   data?: T
 }
 
-/**
- * @function createSubmissionAction
- * @description
- * Inserts a new PR submission record into the "project_submissions" table.
- * Now checks that the project is open and the student is not the project owner.
- *
- * @param {SubmissionParams} params - projectId, studentAddress, prLink
- * @returns {Promise<ActionResult>} - success or failure object
- */
 export async function createSubmissionAction(
   params: SubmissionParams
 ): Promise<ActionResult> {
@@ -57,14 +81,12 @@ export async function createSubmissionAction(
         message: "Project not found or invalid project ID."
       }
     }
-
     if (project.projectStatus !== "open") {
       return {
         isSuccess: false,
         message: "Project is not open. Submissions are closed."
       }
     }
-
     // 2) Ensure student is not the owner
     if (params.studentAddress === project.projectOwner) {
       return {
@@ -73,20 +95,28 @@ export async function createSubmissionAction(
       }
     }
 
-    // 3) Insert the submission
+    // 3) Parse the PR link properly to store in the DB
+    const { repoOwner, repoName, prNumber } = extractRepoInfoFromLink(
+      params.prLink
+    )
+
+    // 4) Insert the submission
     const [insertedRow] = await db
       .insert(projectSubmissionsTable)
       .values({
         projectId: params.projectId,
         studentAddress: params.studentAddress,
-        prLink: params.prLink
+        prLink: params.prLink,
+        repoOwner: repoOwner,
+        repoName: repoName,
+        prNumber: prNumber.toString(),
       })
       .returning()
 
     return {
       isSuccess: true,
       message: "Submission created successfully",
-      data: insertedRow
+      data: insertedRow,
     }
   } catch (error) {
     console.error("Error creating submission:", error)
@@ -101,9 +131,6 @@ export async function createSubmissionAction(
  * @function getSubmissionsByProjectAction
  * @description
  * Fetches all PR submissions for a given project from the "project_submissions" table.
- *
- * @param {string} projectId - The project's ID
- * @returns {Promise<ProjectSubmission[]>} - An array of submissions
  */
 export async function getSubmissionsByProjectAction(
   projectId: string
@@ -117,8 +144,6 @@ export async function getSubmissionsByProjectAction(
     return submissions
   } catch (error) {
     console.error("Error fetching submissions:", error)
-    // Return an empty array on failure
     return []
   }
 }
-

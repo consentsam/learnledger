@@ -13,7 +13,7 @@
  *
  * Key features:
  * - "projectId" references which project the submission is for
- * - "studentAddress" is the user’s wallet address
+ * - "studentAddress" is the user's wallet address
  * - "prLink" is a string for the GitHub PR URL
  * - "repoOwner", "repoName", "prNumber" are optional but help us do an exact match
  * - "createdAt" is the timestamp of submission creation
@@ -27,14 +27,14 @@
  *   these columns didn't exist initially.
  */
 
-import { pgTable, uuid, text, timestamp, integer } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, text, timestamp } from 'drizzle-orm/pg-core'
 import { InferModel } from 'drizzle-orm'
 
 export const projectSubmissionsTable = pgTable('project_submissions', {
   id: uuid('id').defaultRandom().primaryKey(),
 
   // The project to which this submission belongs
-  projectId: text('project_id').notNull(),
+  projectId: uuid('project_id').notNull(),
 
   // The student's wallet address
   studentAddress: text('student_address').notNull(),
@@ -43,9 +43,9 @@ export const projectSubmissionsTable = pgTable('project_submissions', {
   prLink: text('pr_link').notNull(),
 
   // OPTIONAL: extracted from prLink to facilitate matching the GH webhook
-  repoOwner: text('repo_owner'),   // e.g., "facebook"
-  repoName: text('repo_name'),     // e.g., "react"
-  prNumber: integer('pr_number'),  // e.g., 123
+  repoOwner: text('repo_owner').notNull(),   // e.g., "facebook"
+  repoName: text('repo_name').notNull(),     // e.g., "react"
+  prNumber: text('pr_number').notNull(),  // e.g., 123
 
   // Timestamp of creation
   createdAt: timestamp('created_at').defaultNow().notNull(),

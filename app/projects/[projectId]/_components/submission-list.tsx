@@ -28,7 +28,6 @@ import React, { useState } from 'react'
 import { useWallet } from '@/components/utilities/wallet-provider'
 import { ProjectSubmission } from '@/db/schema/project-submissions-schema'
 import { Button } from '@/components/ui/button'
-import { approveSubmissionAction } from '@/actions/db/projects-actions'
 import { useRouter } from 'next/navigation'
 
 interface SubmissionListProps {
@@ -43,8 +42,8 @@ export default function SubmissionList({
   submissions,
 }: SubmissionListProps) {
   const { walletAddress } = useWallet()
-  const router = useRouter()
   const [loading, setLoading] = useState<string | null>(null)
+  const router = useRouter()
 
   /**
    * @function handleApprove
@@ -54,32 +53,23 @@ export default function SubmissionList({
    * the project becomes "closed" or the assignedFreelancer is set. Then we refresh.
    */
   const handleApprove = async (studentAddress: string) => {
-    if (!walletAddress) {
-      alert('Please connect your wallet first.')
-      return
-    }
-    if (walletAddress !== projectOwner) {
-      alert('You are not the project owner; cannot approve submissions.')
-      return
-    }
-
     try {
       setLoading(studentAddress)
-      const result = await approveSubmissionAction({
-        projectId,
-        studentAddress,
-        walletAddress,
+      const response = await fetch('/api/projects/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId,
+          studentAddress,
+          walletAddress
+        })
       })
-      if (!result.isSuccess) {
-        alert(`Failed to approve submission: ${result.message}`)
-      } else {
-        alert(`Submission approved. ${result.message}`)
-        // Refresh page to reflect the new project status
-        router.refresh()
-      }
+      
+      if (!response.ok) throw new Error('Failed to approve')
+      
+      router.refresh()
     } catch (error) {
-      console.error('Error approving submission:', error)
-      alert('An error occurred while approving the submission.')
+      console.error('Error approving:', error)
     } finally {
       setLoading(null)
     }
