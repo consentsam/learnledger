@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
       walletAddress: body.walletAddress,
       projectName: body.projectName,
       projectDescription: body.projectDescription || '',
-      projectLink: '', // optional, not currently collected
+      projectRepo: body.projectRepo || '',
       prizeAmount: body.prizeAmount || 0,
       requiredSkills: body.requiredSkills || '',
     })
