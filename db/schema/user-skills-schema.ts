@@ -27,7 +27,7 @@ export const userSkillsTable = pgTable('user_skills', {
   userId: text('user_id').notNull(),
 
   // The skill's UUID from skillsTable
-  skillId: text('skill_id').notNull(),
+  skillId: uuid('skill_id').notNull(),
 
   // Timestamp for when the skill was added to the user's profile
   addedAt: timestamp('added_at').defaultNow().notNull(),

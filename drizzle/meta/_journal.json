@@ -36,6 +36,20 @@
       "when": 1740420174061,
       "tag": "0004_nervous_jackal",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1740426469229,
+      "tag": "0005_strange_living_lightning",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1740427355740,
+      "tag": "0006_lonely_network",
+      "breakpoints": true
     }
   ]
 }

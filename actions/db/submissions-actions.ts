@@ -5,35 +5,31 @@
  *
  * @description
  * Server-side actions to manage PR submissions for a given project.
- * - createSubmissionAction: Insert a new row for a student's PR link.
- * - getSubmissionsByProjectAction: Fetch all submissions for a given project.
+ * Key changes:
+ * - Now checks if the user has all requiredSkills for the project. If not, blocks the submission.
+ *
+ * @dependencies
+ * - "@/db/db" for Drizzle connection
+ * - "@/db/schema/project-submissions-schema" for the submissions table
+ * - "@/db/schema/projects-schema" for the project
+ * - "@/actions/db/skills-actions" to fetch user’s skills
+ * - "drizzle-orm" eq, and, etc. for queries
  */
 
 import { db } from "@/db/db"
 import { projectSubmissionsTable } from "@/db/schema/project-submissions-schema"
 import { projectsTable } from "@/db/schema/projects-schema"
 import { eq } from "drizzle-orm"
+import { fetchUserSkillsAction } from "@/actions/db/skills-actions"
 
 /**
- * We define a utility function to parse the PR link:
- * Example: https://github.com/consentsam/demo-project-ledger/pull/2
- *  - owner: consentsam
- *  - repo: demo-project-ledger
- *  - prNumber: 2
- *
- * We'll do a simple regex or string-split approach.
+ * We'll do a simple parse of the PR link to store possible GitHub repo data.
  */
 function extractRepoInfoFromLink(prLink: string) {
-  // This pattern should match: https://github.com/<owner>/<repo>/pull/<number>
-  // We'll be naive and assume it always matches. In production, handle errors carefully!
   try {
     const url = new URL(prLink)
-    // path = /consentsam/demo-project-ledger/pull/2
+    // path: /owner/repo/pull/123
     const segments = url.pathname.split("/")
-    // segments[1] = "consentsam"
-    // segments[2] = "demo-project-ledger"
-    // segments[3] = "pull"
-    // segments[4] = "2"
     if (segments.length >= 5 && segments[3] === "pull") {
       return {
         repoOwner: segments[1],
@@ -42,9 +38,8 @@ function extractRepoInfoFromLink(prLink: string) {
       }
     }
   } catch (err) {
-    // If it fails to parse, fallback or return placeholders
+    // if parsing fails, fallback
   }
-  // Fallback if something weird
   return {
     repoOwner: "placeholder",
     repoName: "placeholder",
@@ -64,11 +59,21 @@ interface ActionResult<T = any> {
   data?: T
 }
 
+/**
+ * @function createSubmissionAction
+ * @description
+ * 1) Fetches the project. If not "open", blocks submission.
+ * 2) Checks if student has the project's requiredSkills. Blocks if missing any.
+ * 3) Inserts a row in `project_submissions`.
+ *
+ * @param {SubmissionParams} params - The input payload
+ * @returns {Promise<ActionResult>} success/fail object
+ */
 export async function createSubmissionAction(
   params: SubmissionParams
 ): Promise<ActionResult> {
   try {
-    // 1) Fetch the project to ensure it exists and is open
+    // 1) Fetch project
     const [project] = await db
       .select()
       .from(projectsTable)
@@ -87,7 +92,6 @@ export async function createSubmissionAction(
         message: "Project is not open. Submissions are closed."
       }
     }
-    // 2) Ensure student is not the owner
     if (params.studentAddress === project.projectOwner) {
       return {
         isSuccess: false,
@@ -95,20 +99,44 @@ export async function createSubmissionAction(
       }
     }
 
-    // 3) Parse the PR link properly to store in the DB
-    const { repoOwner, repoName, prNumber } = extractRepoInfoFromLink(
-      params.prLink
-    )
+    // 2) Check required skills
+    const reqSkillsStr = (project.requiredSkills || "").trim()
+    if (reqSkillsStr) {
+      // parse
+      const requiredSkillNames = reqSkillsStr.split(",").map((s) => s.trim()).filter(Boolean)
+      // fetch user’s skills
+      const userSkillsResult = await fetchUserSkillsAction(params.studentAddress)
+      if (!userSkillsResult.isSuccess || !userSkillsResult.data) {
+        return {
+          isSuccess: false,
+          message: `Could not fetch user skills: ${userSkillsResult.message}`
+        }
+      }
+      const userSkillNames = userSkillsResult.data.map((row: any) =>
+        (row.skillName || "").toLowerCase()
+      )
+      // check if user is missing any required skill
+      for (const rs of requiredSkillNames) {
+        if (!userSkillNames.includes(rs.toLowerCase())) {
+          return {
+            isSuccess: false,
+            message: `You do not have the required skill: ${rs}`
+          }
+        }
+      }
+    }
 
-    // 4) Insert the submission
+    // 3) Insert the submission row
+    const { repoOwner, repoName, prNumber } = extractRepoInfoFromLink(params.prLink)
+
     const [insertedRow] = await db
       .insert(projectSubmissionsTable)
       .values({
         projectId: params.projectId,
         studentAddress: params.studentAddress,
         prLink: params.prLink,
-        repoOwner: repoOwner,
-        repoName: repoName,
+        repoOwner,
+        repoName,
         prNumber: prNumber.toString(),
       })
       .returning()
@@ -134,7 +162,7 @@ export async function createSubmissionAction(
  */
 export async function getSubmissionsByProjectAction(
   projectId: string
-) {
+): Promise<any[]> {
   try {
     const submissions = await db
       .select()
