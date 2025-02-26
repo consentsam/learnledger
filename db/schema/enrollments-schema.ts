@@ -19,8 +19,8 @@
  * - The "markCourseCompleteAction" can set is_completed to true.
  */
 
-import { pgTable, uuid, text, boolean, timestamp } from 'drizzle-orm/pg-core'
 import { InferModel } from 'drizzle-orm'
+import { pgTable, uuid, text, boolean, timestamp } from 'drizzle-orm/pg-core'
 
 export const enrollmentsTable = pgTable('enrollments', {
   id: uuid('id').defaultRandom().primaryKey(),

@@ -4,31 +4,12 @@
  * @description
  * Defines the "project_submissions" table for storing student PR submissions.
  * Each submission belongs to a single project, identified by `projectId`,
- * and includes the student's wallet address, plus the PR link.
- *
- * Now extended to store optional GitHub-specific fields to facilitate webhook matching:
- *  - repoOwner: the GitHub user or org name
- *  - repoName: the repository name
- *  - prNumber: the pull request number
- *
- * Key features:
- * - "projectId" references which project the submission is for
- * - "studentAddress" is the user's wallet address
- * - "prLink" is a string for the GitHub PR URL
- * - "repoOwner", "repoName", "prNumber" are optional but help us do an exact match
- * - "createdAt" is the timestamp of submission creation
- *
- * @dependencies
- * - drizzle-orm/pg-core for Postgres columns
- * - drizzle-orm for typed model inference
- *
- * @notes
- * - In an actual production environment, you'd add a proper migration if
- *   these columns didn't exist initially.
+ * and includes the student's wallet address, plus the PR link, plus a new
+ * `isMerged` field to indicate whether the submission’s PR has been merged.
  */
 
-import { pgTable, uuid, text, timestamp } from 'drizzle-orm/pg-core'
 import { InferModel } from 'drizzle-orm'
+import { pgTable, uuid, text, timestamp, boolean } from 'drizzle-orm/pg-core'
 
 export const projectSubmissionsTable = pgTable('project_submissions', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -43,9 +24,16 @@ export const projectSubmissionsTable = pgTable('project_submissions', {
   prLink: text('pr_link').notNull(),
 
   // OPTIONAL: extracted from prLink to facilitate matching the GH webhook
-  repoOwner: text('repo_owner').notNull(),   // e.g., "facebook"
-  repoName: text('repo_name').notNull(),     // e.g., "react"
-  prNumber: text('pr_number').notNull(),  // e.g., 123
+  repoOwner: text('repo_owner').notNull(),  // e.g., "facebook"
+  repoName: text('repo_name').notNull(),    // e.g., "react"
+  prNumber: text('pr_number').notNull(),    // e.g., "123"
+
+  /**
+   * @field isMerged
+   * Indicates if this submission's PR was actually merged.
+   * Updated by GitHub webhook or manual logic if you want.
+   */
+  isMerged: boolean('is_merged').default(false).notNull(),
 
   // Timestamp of creation
   createdAt: timestamp('created_at').defaultNow().notNull(),

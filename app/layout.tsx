@@ -23,9 +23,11 @@
 
 import './globals.css'
 import React from 'react'
+
 import type { Metadata } from 'next'
-import { WalletProvider } from '@/components/utilities/wallet-provider'
+
 import { NavBar } from '@/components/utilities/nav-bar'
+import { WalletProvider } from '@/components/utilities/wallet-provider'
 
 export const metadata: Metadata = {
   title: 'ProjectLedger',

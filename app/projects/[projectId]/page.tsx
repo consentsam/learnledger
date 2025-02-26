@@ -21,6 +21,13 @@
  * @notes
  * - The client side still checks wallet ownership to show/hide the Approve button or submission form.
  */
+/**
+ * @file page.tsx
+ *
+ * @description
+ * A Next.js Server Component for the route /projects/[projectId].
+ * It loads the project by ID and any associated submissions, then renders them.
+ */
 
 import React from 'react'
 import { db } from '@/db/db'
@@ -32,6 +39,7 @@ import {
 } from '@/actions/db/submissions-actions'
 import SubmissionList from './_components/submission-list'
 import SubmitPrForm from './_components/submit-pr-form'
+import { EditProjectButton } from './_components/edit-project-button'
 
 interface ProjectPageProps {
   params: { projectId: string }
@@ -58,9 +66,13 @@ export default async function ProjectDetailPage({ params }: ProjectPageProps) {
   // 3) Render the data (SSR).
   return (
     <main className="p-4 space-y-8">
-      <section className="border p-4 rounded shadow">
-        <h1 className="text-2xl font-bold mb-2">{project.projectName}</h1>
-        <p className="text-sm text-gray-600">Status: {project.projectStatus}</p>
+      <section className="border p-4 rounded shadow space-y-3">
+        <div>
+          <h1 className="text-2xl font-bold mb-2">{project.projectName}</h1>
+          <p className="text-sm text-gray-600">
+            Status: {project.projectStatus}
+          </p>
+        </div>
 
         {project.projectDescription && (
           <p className="mt-3 text-gray-800">{project.projectDescription}</p>
@@ -79,13 +91,26 @@ export default async function ProjectDetailPage({ params }: ProjectPageProps) {
             Required Skills: {project.requiredSkills}
           </p>
         )}
+
+        {/* Completion skills, if any */}
+        {project.completionSkills && (
+          <p className="text-xs text-gray-500">
+            Completion Skills: {project.completionSkills}
+          </p>
+        )}
+
+        {/* RENDER THE "EDIT" BUTTON (client component) */}
+        <EditProjectButton
+          projectId={project.id}
+          projectOwner={project.projectOwner}
+          projectStatus={project.projectStatus}
+        />
       </section>
 
       {/**
        * 4) We only render the <SubmitPrForm /> if the project is still open.
-       *    If the project is closed, there's no reason to show a submission form.
        */}
-      {project.projectStatus === "open" && (
+      {project.projectStatus === 'open' && (
         <SubmitPrForm
           projectId={projectId}
           projectOwner={project.projectOwner}
@@ -101,8 +126,8 @@ export default async function ProjectDetailPage({ params }: ProjectPageProps) {
         projectId={projectId}
         projectOwner={project.projectOwner}
         submissions={submissions}
+        projectStatus={project.projectStatus}
       />
     </main>
   )
 }
-

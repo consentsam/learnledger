@@ -29,4 +29,4 @@ const pool = new Pool({
 })
 
 // Create and export the Drizzle ORM instance
-export const db = drizzle(pool)
+export const db = drizzle(pool, { logger: true })

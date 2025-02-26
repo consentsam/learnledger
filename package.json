@@ -10,7 +10,7 @@
     "db:migrate": "drizzle-kit generate",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "db:push": "drizzle-kit push:pg"
+    "db:push": "drizzle-kit push"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.0.2",

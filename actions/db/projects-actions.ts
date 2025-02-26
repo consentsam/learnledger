@@ -1,19 +1,51 @@
-// actions/db/projects-actions.ts
+"use server"
 
-import { db } from "@/db/db"
-import { ActionResult } from "next/dist/server/app-render/types"
-import { projectsTable } from "@/db/schema/projects-schema"
+/**
+ * @file projects-actions.ts
+ *
+ * @description
+ * Server actions for project creation and awarding logic upon project completion. 
+ * 
+ * Key points:
+ * - createProjectAction: Now accepts both requiredSkills and completionSkills from the user (the project owner).
+ * - autoAwardOnPrMergeAction: Called by GitHub webhook if a PR is merged; awards tokens + completionSkills.
+ * - approveSubmissionAction: Manual approval that also awards tokens + completionSkills.
+ *
+ * @dependencies
+ * - drizzle-orm for DB queries
+ * - balances-actions.ts for awarding user balances
+ * - skills-actions.ts for awarding new skills
+ * - projectsTable from db/schema/projects-schema
+ */
+
 import { eq } from "drizzle-orm"
+
 import { updateBalanceAction } from "@/actions/db/balances-actions"
+import {
+  getOrCreateSkillAction,
+  addSkillToUserAction
+} from "@/actions/db/skills-actions"
+import { db } from "@/db/db"
+import { projectsTable } from "@/db/schema/projects-schema"
+
+
+interface ActionResult<T = any> {
+  isSuccess: boolean
+  message: string
+  data?: T
+}
+
+/**
+ * For the "Create Project" workflow
+ */
 interface CreateProjectParams {
   walletAddress: string
   projectName: string
   projectDescription?: string
-  // existing fields ...
-  // Now add projectRepo:
   projectRepo?: string
   prizeAmount?: number
   requiredSkills?: string
+  completionSkills?: string
 }
 
 export async function createProjectAction(
@@ -23,7 +55,7 @@ export async function createProjectAction(
     if (!params.walletAddress || !params.projectName) {
       return {
         isSuccess: false,
-        message: "Missing required fields: walletAddress or projectName"
+        message: 'Missing required fields: walletAddress or projectName',
       }
     }
 
@@ -31,7 +63,7 @@ export async function createProjectAction(
     if (proposedPrize < 0) {
       return {
         isSuccess: false,
-        message: "Prize amount cannot be negative."
+        message: 'Prize amount cannot be negative.',
       }
     }
 
@@ -39,36 +71,43 @@ export async function createProjectAction(
       .insert(projectsTable)
       .values({
         projectName: params.projectName,
-        projectDescription: params.projectDescription ?? "",
+        projectDescription: params.projectDescription ?? '',
         prizeAmount: proposedPrize.toString(),
         projectOwner: params.walletAddress,
-        requiredSkills: params.requiredSkills ?? "",
-        
-        // New field for the repo
-        projectRepo: params.projectRepo ?? "",
+        requiredSkills: params.requiredSkills ?? '',
+        completionSkills: params.completionSkills ?? '',
+        projectRepo: params.projectRepo ?? '',
       })
       .returning()
 
     return {
       isSuccess: true,
-      message: "Project created successfully.",
-      data: inserted
+      message: 'Project created successfully.',
+      data: inserted,
     }
   } catch (error) {
-    console.error("Error creating project:", error)
+    console.error('Error creating project:', error)
     return {
       isSuccess: false,
-      message: "Failed to create project"
+      message: 'Failed to create project',
     }
   }
 }
 
+/**
+ * @function autoAwardOnPrMergeAction
+ * @description
+ * Called by the GitHub webhook once a PR is merged (in a perfect scenario).
+ * If the project is open, it awards the user:
+ * - any token prize
+ * - any completionSkills 
+ * Then it marks the project closed.
+ */
 export async function autoAwardOnPrMergeAction(params: {
   projectId: string
   studentAddress: string
 }): Promise<ActionResult> {
   try {
-    // 1) fetch project
     const [project] = await db
       .select()
       .from(projectsTable)
@@ -77,35 +116,51 @@ export async function autoAwardOnPrMergeAction(params: {
     if (!project) {
       return { isSuccess: false, message: "Project not found" }
     }
-
     if (project.projectStatus !== "open") {
       return {
         isSuccess: false,
-        message: "Project is already closed. No award."
+        message: "Project is already closed. No auto-award applied."
       }
     }
 
-    // 2) parse the prize
+    // Award tokens if any
     const prize = project.prizeAmount ? Number(project.prizeAmount) : 0
-    if (prize <= 0) {
-      // no prize to award
-      return { isSuccess: false, message: "No prize to award." }
-    }
-
-    // 3) update balance
-    const awardResult = await updateBalanceAction({
-      userId: params.studentAddress,
-      amount: prize,
-      preventNegativeBalance: false,
-    })
-    if (!awardResult.isSuccess) {
-      return {
-        isSuccess: false,
-        message: "Failed to award tokens"
+    if (prize > 0) {
+      const awardResult = await updateBalanceAction({
+        userId: params.studentAddress,
+        amount: prize,
+        preventNegativeBalance: false
+      })
+      if (!awardResult.isSuccess) {
+        return {
+          isSuccess: false,
+          message: `Auto-award token transfer failed: ${awardResult.message}`
+        }
       }
     }
 
-    // 4) close project
+    // Award completion skills if any
+    const compSkillsStr = (project.completionSkills || "").trim()
+    if (compSkillsStr) {
+      const skillNames = compSkillsStr.split(",").map((x) => x.trim()).filter(Boolean)
+      for (const skillName of skillNames) {
+        const getOrCreate = await getOrCreateSkillAction(skillName)
+        if (!getOrCreate.isSuccess || !getOrCreate.data) {
+          console.error(`Auto-merge awarding skill '${skillName}' failed:`, getOrCreate.message)
+          continue
+        }
+        const skillId = getOrCreate.data.id
+        const addSkill = await addSkillToUserAction({
+          userId: params.studentAddress,
+          skillId
+        })
+        if (!addSkill.isSuccess) {
+          console.error(`Adding skill '${skillName}' to user failed:`, addSkill.message)
+        }
+      }
+    }
+
+    // Mark as closed
     await db
       .update(projectsTable)
       .set({
@@ -116,31 +171,44 @@ export async function autoAwardOnPrMergeAction(params: {
 
     return {
       isSuccess: true,
-      message: `Auto-award success. ${prize} tokens sent to ${params.studentAddress}.`
+      message: `Auto-award done. Tokens awarded: ${prize}`
     }
-
   } catch (error) {
-    console.error("Auto-award error:", error)
+    console.error("autoAwardOnPrMergeAction error:", error)
     return { isSuccess: false, message: "Failed to auto-award" }
   }
 }
 
+/**
+ * @function approveSubmissionAction
+ * @description
+ * Manually approves a student's PR (the project owner calls this).
+ * 1) Closes the project
+ * 2) Awards tokens
+ * 3) Awards completionSkills
+ */
 export async function approveSubmissionAction(params: {
   projectId: string
   studentAddress: string
   walletAddress: string
-}) {
+}): Promise<ActionResult> {
   try {
     const [project] = await db
       .select()
       .from(projectsTable)
       .where(eq(projectsTable.id, params.projectId))
 
-    if (!project || project.projectOwner !== params.walletAddress) {
-      return { isSuccess: false, message: "Not authorized" }
+    if (!project) {
+      return { isSuccess: false, message: "Project not found" }
+    }
+    if (project.projectOwner !== params.walletAddress) {
+      return { isSuccess: false, message: "Not authorized to approve" }
+    }
+    if (project.projectStatus === "closed") {
+      return { isSuccess: false, message: "Project is already closed." }
     }
 
-    // 1) Close the project
+    // Close it
     await db
       .update(projectsTable)
       .set({
@@ -149,27 +217,45 @@ export async function approveSubmissionAction(params: {
       })
       .where(eq(projectsTable.id, params.projectId))
 
-    // 2) Award the tokens
+    // Award tokens
     const prize = Number(project.prizeAmount ?? 0)
     if (prize > 0) {
-      const result = await updateBalanceAction({
+      const tokenRes = await updateBalanceAction({
         userId: params.studentAddress,
         amount: prize
       })
-      if (!result.isSuccess) {
+      if (!tokenRes.isSuccess) {
         return {
           isSuccess: false,
-          message: `Project closed but awarding tokens failed: ${result.message}`
+          message: `Project closed but awarding tokens failed: ${tokenRes.message}`
+        }
+      }
+    }
+
+    // Award completionSkills
+    const compSkillsStr = (project.completionSkills || "").trim()
+    if (compSkillsStr) {
+      const skillNames = compSkillsStr.split(",").map((s) => s.trim()).filter(Boolean)
+      for (const skillName of skillNames) {
+        const skillRes = await getOrCreateSkillAction(skillName)
+        if (!skillRes.isSuccess || !skillRes.data) {
+          console.error(`Failed to create/fetch skill '${skillName}':`, skillRes.message)
+          continue
+        }
+        const skillId = skillRes.data.id
+        const addSkill = await addSkillToUserAction({ userId: params.studentAddress, skillId })
+        if (!addSkill.isSuccess) {
+          console.error(`Failed awarding skill '${skillName}' to user:`, addSkill.message)
         }
       }
     }
 
     return {
       isSuccess: true,
-      message: `Submission approved. ${prize} tokens sent to ${params.studentAddress}`
+      message: `Submission approved. ${prize} tokens + completion skills awarded.`
     }
   } catch (error) {
     console.error("approveSubmissionAction error:", error)
-    return { isSuccess: false, message: "Failed to approve" }
+    return { isSuccess: false, message: "Failed to approve submission" }
   }
 }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+
 import { approveSubmissionAction } from '@/actions/db/projects-actions'
 
 export async function POST(req: NextRequest) {
