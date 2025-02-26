@@ -20,10 +20,12 @@
  */
 
 import React, { useState, FormEvent } from 'react'
+
+import { useRouter } from 'next/navigation'
+
+import { createSubmissionAction } from '@/actions/db/submissions-actions'
 import { Button } from '@/components/ui/button'
 import { useWallet } from '@/components/utilities/wallet-provider'
-import { createSubmissionAction } from '@/actions/db/submissions-actions'
-import { useRouter } from 'next/navigation'
 
 interface SubmitPrFormProps {
   projectId: string

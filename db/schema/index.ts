@@ -22,3 +22,5 @@ export * from './enrollments-schema'
 // Added newly created project_submissions table:
 export * from './project-submissions-schema'
 export * from './placeholder'
+export * from './freelancer-schema'
+export * from './company-schema'

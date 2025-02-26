@@ -1,40 +1,19 @@
-/**
- * @file nav-bar.tsx
- *
- * @description
- * This file contains a simple navigation bar that shows the current
- * wallet address if connected, or a "Connect Wallet" button if not.
- * It uses the `useWallet()` hook from our global WalletContext.
- *
- * Key features:
- * - Minimal nav display
- * - Button to trigger wallet connection
- *
- * @dependencies
- * - React for the component
- * - useWallet from WalletProvider
- * - Shadcn <Button> for a consistent look
- *
- * @notes
- * - You can expand this to add more nav links as needed.
- */
-
 "use client"
 
 import React from 'react'
-import { useWallet } from '@/components/utilities/wallet-provider'
+
+import Link from 'next/link'
+
 import { Button } from '@/components/ui/button'
+import { useWallet } from '@/components/utilities/wallet-provider'
 
 /**
  * @function NavBar
- * @description
- * A client-side component that displays the user’s wallet address (if connected)
- * or a button to connect if not. Part of the global layout for the entire app.
- *
- * @returns {JSX.Element} Nav markup
+ * A top navigation bar that shows the project name, a link to /projects,
+ * and a connect wallet button or truncated address if connected.
  */
 export function NavBar() {
-  const { walletAddress, connectWallet, isMetamaskInstalled } = useWallet()
+  const { walletAddress, connectWallet, isMetamaskInstalled, disconnectWallet } = useWallet()
 
   const handleConnect = async () => {
     await connectWallet()
@@ -50,11 +29,18 @@ export function NavBar() {
     }
 
     if (walletAddress) {
-      // Truncate address for nice display
-      const truncated = `${walletAddress.slice(0, 6)}...${walletAddress.slice(
-        -4
-      )}`
-      return <div className="text-blue-600">Connected: {truncated}</div>
+      const truncated = `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
+      return (
+        <div className="flex flex-col items-end gap-1">
+          <div className="text-blue-600">Connected: {truncated}</div>
+          <button
+            className="text-sm text-gray-700 underline"
+            onClick={disconnectWallet}
+          >
+            Disconnect
+          </button>
+        </div>
+      )
     } else {
       return (
         <Button variant="default" onClick={handleConnect}>
@@ -66,9 +52,21 @@ export function NavBar() {
 
   return (
     <nav className="flex items-center justify-between px-4 py-2 bg-white shadow">
-      <div className="font-bold text-lg">ProjectLedger</div>
-      <div>{renderWalletInfo()}</div>
+      <Link href="/" className="font-bold text-lg">ProjectLedger</Link>
+
+      <div className="flex items-center gap-4">
+        <Link href="/projects" className="text-sm">
+          Projects
+        </Link>
+
+        {/* If you want to keep the "Register" link, uncomment:
+        <Link href="/register" className="text-sm">
+          Register
+        </Link>
+        */}
+
+        <div>{renderWalletInfo()}</div>
+      </div>
     </nav>
   )
 }
-

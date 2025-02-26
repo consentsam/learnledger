@@ -23,8 +23,8 @@
  * Make sure you have run a migration or ALTER statement to add "completion_skills" and "required_skills" columns if you didn't have them before.
  */
 
-import { pgTable, text, numeric, uuid, timestamp } from 'drizzle-orm/pg-core'
 import { InferModel } from 'drizzle-orm'
+import { pgTable, text, numeric, uuid, timestamp } from 'drizzle-orm/pg-core'
 
 export const projectsTable = pgTable('projects', {
   id: uuid('id').defaultRandom().primaryKey(),

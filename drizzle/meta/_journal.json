@@ -50,6 +50,20 @@
       "when": 1740427355740,
       "tag": "0006_lonely_network",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1740579655562,
+      "tag": "0007_famous_sir_ram",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1740603881531,
+      "tag": "0008_lyrical_lorna_dane",
+      "breakpoints": true
     }
   ]
 }

@@ -22,9 +22,10 @@
 
 "use server"
 
+import { eq } from "drizzle-orm"
+
 import { db } from "@/db/db"
 import { userBalancesTable } from "@/db/schema/user-balances-schema"
-import { eq } from "drizzle-orm"
 
 /**
  * @interface UpdateBalanceParams

@@ -22,10 +22,11 @@
  * - The detail page (app/projects/[projectId]/page.tsx) must exist
  *   so clicking a project navigates properly.
  */
-
 import Link from 'next/link'
+
 import { db } from '@/db/db'
 import { projectsTable } from '@/db/schema/projects-schema'
+
 import { ProjectCreationToggle } from './_components/create-project-form'
 
 // Next.js app router server component
@@ -46,34 +47,39 @@ export default async function ProjectsPage() {
       {/* Projects listing */}
       <section className="mt-4">
         {projects.length === 0 ? (
-          <p className="text-gray-600">No projects found. Click "Create Project" to add one.</p>
+          <p className="text-gray-600">
+            No projects found. Click &quot;Create Project&quot; to add one.
+          </p>
         ) : (
           <ul className="space-y-2">
             {projects.map((proj) => (
-              <li key={proj.id} className="border p-3 rounded shadow-sm">
-                {/* Wrap the project title in a Link component */}
-                <Link href={`/projects/${proj.id}`}>
-                  {/* 
-                    Display project name, status, etc. 
-                    We use a <div> or <span> to style the text. 
-                    Link will navigate to /projects/<projectId>.
-                  */}
-                  <div className="font-semibold text-gray-800 hover:underline">
+              <li
+                key={proj.id}
+                className="border p-3 rounded shadow-sm flex flex-col gap-2"
+              >
+                <div>
+                  <div className="font-semibold text-gray-800">
                     {proj.projectName}
                   </div>
-                </Link>
-
-                {/* Show status or other metadata */}
-                <div className="text-sm text-gray-500">
-                  Status: {proj.projectStatus}
+                  <div className="text-sm text-gray-500">
+                    Status: {proj.projectStatus}
+                  </div>
+                  {proj.projectDescription && (
+                    <div className="text-sm text-gray-700 mt-1">
+                      {proj.projectDescription}
+                    </div>
+                  )}
                 </div>
 
-                {/* Optionally show description */}
-                {proj.projectDescription && (
-                  <div className="text-sm text-gray-700 mt-1">
-                    {proj.projectDescription}
-                  </div>
-                )}
+                {/* "View Details" button */}
+                <div>
+                  <Link
+                    href={`/projects/${proj.id}`}
+                    className="text-blue-600 underline hover:text-blue-800"
+                  >
+                    View Details
+                  </Link>
+                </div>
               </li>
             ))}
           </ul>

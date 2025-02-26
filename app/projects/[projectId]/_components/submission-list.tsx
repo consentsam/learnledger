@@ -25,25 +25,32 @@
  */
 
 import React, { useState } from 'react'
+
+import { useRouter } from 'next/navigation'
+
+import { Button } from '@/components/ui/button'
 import { useWallet } from '@/components/utilities/wallet-provider'
 import { ProjectSubmission } from '@/db/schema/project-submissions-schema'
-import { Button } from '@/components/ui/button'
-import { useRouter } from 'next/navigation'
 
 interface SubmissionListProps {
   projectId: string
   projectOwner: string
   submissions: ProjectSubmission[]
+  projectStatus: string
 }
 
 export default function SubmissionList({
   projectId,
   projectOwner,
   submissions,
+  projectStatus
 }: SubmissionListProps) {
   const { walletAddress } = useWallet()
   const [loading, setLoading] = useState<string | null>(null)
   const router = useRouter()
+
+  // We'll only show Approve if it's open AND you're the owner
+  const canApprove = (walletAddress === projectOwner) && (projectStatus === "open")
 
   /**
    * @function handleApprove
@@ -110,7 +117,7 @@ export default function SubmissionList({
             </div>
 
             {/* Approve button visible only if user is owner */}
-            {walletAddress === projectOwner && (
+            {canApprove && (
               <Button
                 variant="default"
                 onClick={() => handleApprove(sub.studentAddress)}
