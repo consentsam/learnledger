@@ -5,4 +5,4 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 })
 
-export const db = drizzle(pool) 
+export const db = drizzle(pool, { logger: true })

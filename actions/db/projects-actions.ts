@@ -18,14 +18,16 @@
  * - projectsTable from db/schema/projects-schema
  */
 
-import { db } from "@/db/db"
-import { projectsTable } from "@/db/schema/projects-schema"
 import { eq } from "drizzle-orm"
+
 import { updateBalanceAction } from "@/actions/db/balances-actions"
 import {
   getOrCreateSkillAction,
   addSkillToUserAction
 } from "@/actions/db/skills-actions"
+import { db } from "@/db/db"
+import { projectsTable } from "@/db/schema/projects-schema"
+
 
 interface ActionResult<T = any> {
   isSuccess: boolean
@@ -34,9 +36,7 @@ interface ActionResult<T = any> {
 }
 
 /**
- * @interface CreateProjectParams
- * For capturing all data needed to create a project, including
- * requiredSkills and completionSkills.
+ * For the "Create Project" workflow
  */
 interface CreateProjectParams {
   walletAddress: string
@@ -44,28 +44,10 @@ interface CreateProjectParams {
   projectDescription?: string
   projectRepo?: string
   prizeAmount?: number
-
-  /**
-   * A comma-separated list of skill names that a student MUST already have to submit a PR
-   */
   requiredSkills?: string
-
-  /**
-   * A comma-separated list of skill names that a student GAINS upon completion
-   */
   completionSkills?: string
 }
 
-/**
- * @function createProjectAction
- * @description
- * Inserts a new project into the database, capturing:
- * - requiredSkills: The user needs these to submit
- * - completionSkills: The user gets these upon final approval
- *
- * @param {CreateProjectParams} params
- * @returns {Promise<ActionResult>}
- */
 export async function createProjectAction(
   params: CreateProjectParams
 ): Promise<ActionResult> {
@@ -73,7 +55,7 @@ export async function createProjectAction(
     if (!params.walletAddress || !params.projectName) {
       return {
         isSuccess: false,
-        message: "Missing required fields: walletAddress or projectName"
+        message: 'Missing required fields: walletAddress or projectName',
       }
     }
 
@@ -81,7 +63,7 @@ export async function createProjectAction(
     if (proposedPrize < 0) {
       return {
         isSuccess: false,
-        message: "Prize amount cannot be negative."
+        message: 'Prize amount cannot be negative.',
       }
     }
 
@@ -89,27 +71,25 @@ export async function createProjectAction(
       .insert(projectsTable)
       .values({
         projectName: params.projectName,
-        projectDescription: params.projectDescription ?? "",
+        projectDescription: params.projectDescription ?? '',
         prizeAmount: proposedPrize.toString(),
         projectOwner: params.walletAddress,
-
-        requiredSkills: params.requiredSkills ?? "",
-        completionSkills: params.completionSkills ?? "",
-
-        projectRepo: params.projectRepo ?? "",
+        requiredSkills: params.requiredSkills ?? '',
+        completionSkills: params.completionSkills ?? '',
+        projectRepo: params.projectRepo ?? '',
       })
       .returning()
 
     return {
       isSuccess: true,
-      message: "Project created successfully.",
-      data: inserted
+      message: 'Project created successfully.',
+      data: inserted,
     }
   } catch (error) {
-    console.error("Error creating project:", error)
+    console.error('Error creating project:', error)
     return {
       isSuccess: false,
-      message: "Failed to create project"
+      message: 'Failed to create project',
     }
   }
 }
@@ -224,7 +204,7 @@ export async function approveSubmissionAction(params: {
     if (project.projectOwner !== params.walletAddress) {
       return { isSuccess: false, message: "Not authorized to approve" }
     }
-    if (project.projectStatus !== "open") {
+    if (project.projectStatus === "closed") {
       return { isSuccess: false, message: "Project is already closed." }
     }
 

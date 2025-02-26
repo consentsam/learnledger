@@ -17,8 +17,8 @@
  * - userId is stored as text, skillId references the "skills" table (by ID).
  */
 
-import { pgTable, uuid, text, timestamp } from 'drizzle-orm/pg-core'
 import { InferModel } from 'drizzle-orm'
+import { pgTable, uuid, text, timestamp } from 'drizzle-orm/pg-core'
 
 export const userSkillsTable = pgTable('user_skills', {
   id: uuid('id').defaultRandom().primaryKey(),

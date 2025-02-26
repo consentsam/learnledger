@@ -23,10 +23,14 @@
 
 import { useState, useCallback } from 'react'
 
+// Use a type assertion approach instead of declarations
+// This avoids conflicts with existing declarations
+
 export interface UseMetamaskResult {
   walletAddress: string | null
   connectMetamask: () => Promise<void>
   isMetamaskInstalled: boolean
+  disconnectMetamask: () => void
 }
 
 /**
@@ -56,30 +60,29 @@ export interface UseMetamaskResult {
  * - This is a minimal approach without signature-based verification.
  */
 export function useMetamask(): UseMetamaskResult {
-  const [walletAddress, setWalletAddress] = useState<string | null>(null)
+  const [walletAddress, setWalletAddress] = useState<string | null>(() => {
+    // On page load, read from localStorage (if any)
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('connectedWallet') || null
+    }
+    return null
+  })
 
   const isMetamaskInstalled = typeof window !== 'undefined' && !!window.ethereum
 
-  /**
-   * @function connectMetamask
-   * @description
-   * Attempts to request account access from Metamask. If successful,
-   * updates the local state with the first returned address.
-   */
   const connectMetamask = useCallback(async () => {
     if (!isMetamaskInstalled) {
-      alert('Metamask is not installed. Please install it to continue.')
+      alert('Metamask is not installed. Please install it.')
       return
     }
-
     try {
-      if (!window.ethereum) throw new Error('Metamask not found');
-      
-      const accounts: string[] = await window.ethereum.request({
+      // Use non-null assertion since we already checked isMetamaskInstalled
+      const accounts: string[] = await window.ethereum!.request({
         method: 'eth_requestAccounts',
       })
       if (accounts && accounts.length > 0) {
         setWalletAddress(accounts[0])
+        localStorage.setItem('connectedWallet', accounts[0])
       } else {
         alert('No Metamask accounts found.')
       }
@@ -89,10 +92,16 @@ export function useMetamask(): UseMetamaskResult {
     }
   }, [isMetamaskInstalled])
 
+  const disconnectMetamask = useCallback(() => {
+    setWalletAddress(null)
+    localStorage.removeItem('connectedWallet')
+  }, [])
+
   return {
     walletAddress,
     connectMetamask,
     isMetamaskInstalled,
+    disconnectMetamask
   }
 }
 

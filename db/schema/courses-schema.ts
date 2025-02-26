@@ -17,8 +17,8 @@
  * - This table can be extended with more fields in future phases (e.g., start date, module content).
  */
 
-import { pgTable, text, numeric, uuid } from 'drizzle-orm/pg-core'
 import { InferModel } from 'drizzle-orm'
+import { pgTable, text, numeric, uuid } from 'drizzle-orm/pg-core'
 
 export const coursesTable = pgTable('courses', {
   id: uuid('id').defaultRandom().primaryKey(),

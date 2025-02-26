@@ -16,11 +16,12 @@
  * - "drizzle-orm" eq, and, etc. for queries
  */
 
+import { eq } from "drizzle-orm"
+
+import { fetchUserSkillsAction } from "@/actions/db/skills-actions"
 import { db } from "@/db/db"
 import { projectSubmissionsTable } from "@/db/schema/project-submissions-schema"
 import { projectsTable } from "@/db/schema/projects-schema"
-import { eq } from "drizzle-orm"
-import { fetchUserSkillsAction } from "@/actions/db/skills-actions"
 
 /**
  * We'll do a simple parse of the PR link to store possible GitHub repo data.
@@ -115,8 +116,13 @@ export async function createSubmissionAction(
       const userSkillNames = userSkillsResult.data.map((row: any) =>
         (row.skillName || "").toLowerCase()
       )
+      console.log("userSkillNames", userSkillNames)
+      console.log("requiredSkillNames", requiredSkillNames)
+
+
       // check if user is missing any required skill
       for (const rs of requiredSkillNames) {
+        console.log("rs", rs)
         if (!userSkillNames.includes(rs.toLowerCase())) {
           return {
             isSuccess: false,
