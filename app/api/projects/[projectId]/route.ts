@@ -3,105 +3,160 @@ import { NextRequest, NextResponse } from 'next/server'
 
 import { db } from '@/db/db'
 import { projectsTable } from '@/db/schema/projects-schema'
+import { companyTable } from '@/db/schema/company-schema'
 
-/**
- * GET /api/projects/:projectId
- * Returns a single project by ID
- */
+/** GET /api/projects/[projectId] - existing code  **/
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { projectId: string } }
 ) {
   try {
-    const projectId = params.projectId
-    const [project] = await db
-      .select()
-      .from(projectsTable)
-      .where(eq(projectsTable.id, projectId))
+    const { projectId } = params
 
-    if (!project) {
-      return NextResponse.json({ message: 'Not found' }, { status: 404 })
+    const [row] = await db
+      .select({
+        id: projectsTable.id,
+        projectName: projectsTable.projectName,
+        projectDescription: projectsTable.projectDescription,
+        prizeAmount: projectsTable.prizeAmount,
+        projectStatus: projectsTable.projectStatus,
+        projectOwner: projectsTable.projectOwner,
+        requiredSkills: projectsTable.requiredSkills,
+        completionSkills: projectsTable.completionSkills,
+        assignedFreelancer: projectsTable.assignedFreelancer,
+        projectRepo: projectsTable.projectRepo,
+        createdAt: projectsTable.createdAt,
+        updatedAt: projectsTable.updatedAt,
+        // Company fields
+        companyId: companyTable.id,
+        companyName: companyTable.companyName,
+      })
+      .from(projectsTable)
+      .leftJoin(
+        companyTable,
+        eq(projectsTable.projectOwner, companyTable.walletAddress)
+      )
+      .where(eq(projectsTable.id, projectId))
+      .limit(1)
+
+    if (!row) {
+      return NextResponse.json(
+        { isSuccess: false, message: 'Project not found' },
+        { status: 404 }
+      )
     }
 
-    return NextResponse.json({ data: project }, { status: 200 })
-  } catch (error) {
-    console.error('[GET /api/projects/:id] Error:', error)
+    return NextResponse.json({ isSuccess: true, data: row }, { status: 200 })
+  } catch (err) {
+    console.error('Error in GET /api/projects/[projectId]:', err)
     return NextResponse.json(
-      { message: 'Internal server error' },
+      { isSuccess: false, message: 'Internal server error' },
       { status: 500 }
     )
   }
 }
 
-/**
- * PUT /api/projects/:projectId
- * Update existing project
- */
+/** PUT /api/projects/[projectId] - existing code (update) **/
 export async function PUT(
   req: NextRequest,
   { params }: { params: { projectId: string } }
 ) {
   try {
-    const body = await req.json()
     const projectId = params.projectId
+    const body = await req.json()
 
-    // First fetch the project:
-    const [existing] = await db
-      .select()
-      .from(projectsTable)
-      .where(eq(projectsTable.id, projectId))
-      .limit(1)
-    if (!existing) {
-      return NextResponse.json(
-        { message: 'Project not found' },
-        { status: 404 }
-      )
-    }
+    const { projectName, projectDescription, prizeAmount, requiredSkills, completionSkills, projectRepo } = body
 
-    if (existing.projectStatus === "closed") {
+    if (!projectName) {
       return NextResponse.json(
-        { message: 'Cannot edit a closed project' },
+        { message: 'Project name is required' },
         { status: 400 }
       )
     }
 
-    // If it's open, proceed
     const [updated] = await db
       .update(projectsTable)
       .set({
-        projectName: body.projectName,
-        projectDescription: body.projectDescription,
-        prizeAmount: body.prizeAmount?.toString() ?? '0',
-        requiredSkills: body.requiredSkills,
-        completionSkills: body.completionSkills,
+        projectName,
+        projectDescription,
+        prizeAmount: prizeAmount?.toString() || '0',
+        requiredSkills,
+        completionSkills,
+        projectRepo,
+        updatedAt: new Date(),
       })
       .where(eq(projectsTable.id, projectId))
       .returning()
 
     if (!updated) {
       return NextResponse.json(
-        { message: 'Project not found or no update' },
+        { isSuccess: false, message: 'No matching project or update failed' },
         { status: 404 }
       )
     }
 
-    return NextResponse.json({ data: updated }, { status: 200 })
-  } catch (error) {
-    console.error('[PUT /api/projects/:id] Error:', error)
+    return NextResponse.json({ isSuccess: true, data: updated }, { status: 200 })
+  } catch (err) {
+    console.error('Error in PUT /api/projects/[projectId]:', err)
     return NextResponse.json(
-      { message: 'Internal server error' },
+      { isSuccess: false, message: 'Internal server error' },
       { status: 500 }
     )
   }
 }
 
 /**
- * DELETE /api/projects/:projectId
- * If you want to remove a project, implement here.
+ * DELETE /api/projects/[projectId]
+ * Requires body: { walletAddress: string } to verify the user is the project owner.
  */
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { projectId: string } }
 ) {
-  return NextResponse.json({ message: 'Not implemented' }, { status: 501 })
+  try {
+    const projectId = params.projectId
+    const body = await req.json()
+    const { walletAddress } = body
+    if (!walletAddress) {
+      return NextResponse.json(
+        { isSuccess: false, message: 'Missing walletAddress in request body' },
+        { status: 400 }
+      )
+    }
+
+    // 1) find project
+    const [project] = await db
+      .select()
+      .from(projectsTable)
+      .where(eq(projectsTable.id, projectId))
+
+    if (!project) {
+      return NextResponse.json(
+        { isSuccess: false, message: 'Project not found' },
+        { status: 404 }
+      )
+    }
+
+    // 2) check ownership
+    if (project.projectOwner.toLowerCase() !== walletAddress.toLowerCase()) {
+      return NextResponse.json(
+        { isSuccess: false, message: 'Only the owner can delete this project' },
+        { status: 403 }
+      )
+    }
+
+    // 3) Delete
+    await db.delete(projectsTable).where(eq(projectsTable.id, projectId))
+
+    return NextResponse.json({
+      isSuccess: true,
+      message: `Project ${projectId} deleted.`,
+    })
+  } catch (error) {
+    console.error('Error in DELETE /api/projects/[projectId]:', error)
+    return NextResponse.json(
+      { isSuccess: false, message: 'Internal server error' },
+      { status: 500 }
+    )
+  }
 }

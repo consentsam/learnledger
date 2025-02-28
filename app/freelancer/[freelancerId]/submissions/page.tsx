@@ -39,8 +39,8 @@ export default async function FreelancerSubmissionsPage({
   }
 
   // 2) Build conditions for filtering by isMerged if user used ?merged=1 or ?merged=0
-  //    We'll always match "student_address = freelancer.walletAddress"
-  const conditions = [eq(projectSubmissionsTable.studentAddress, freelancer.walletAddress)]
+  //    We'll always match "freelancer_address = freelancer.walletAddress"
+  const conditions = [eq(projectSubmissionsTable.freelancerAddress, freelancer.walletAddress)]
 
   if (mergedFilter === '1') {
     conditions.push(eq(projectSubmissionsTable.isMerged, true))

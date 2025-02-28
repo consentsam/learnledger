@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
     // 2) Attempt awarding tokens + completion skills
     const result = await autoAwardOnPrMergeAction({
       projectId: submission.projectId,
-      studentAddress: submission.studentAddress
+      freelancerAddress: submission.freelancerAddress
     })
 
     return NextResponse.json({ message: result.message }, { status: 200 })

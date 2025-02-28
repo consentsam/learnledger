@@ -1,90 +1,128 @@
-/**
- * @file page.tsx
- *
- * @description
- * This is the main listing page for the `/projects` route. It is a Next.js Server Component
- * that fetches a list of projects from the database and displays them. Now each project
- * is wrapped in a clickable link that navigates to `/projects/[projectId]`.
- *
- * Key features:
- * - Server-side data fetching from Drizzle ORM
- * - Rendering a list of projects
- * - "Create Project" toggle for adding new projects
- * - Each project name links to the detail page
- *
- * @dependencies
- * - db (Drizzle ORM connection)
- * - projectsTable (schema for "projects" table)
- * - Link from "next/link" for navigation
- * - ProjectCreationToggle for the "create project" form
- *
- * @notes
- * - The detail page (app/projects/[projectId]/page.tsx) must exist
- *   so clicking a project navigates properly.
- */
+/* app/projects/page.tsx */
+"use client"
+
 import Link from 'next/link'
+import React, { useState, useEffect } from 'react'
 
-import { db } from '@/db/db'
-import { projectsTable } from '@/db/schema/projects-schema'
+export default function ProjectsPage() {
+  // We keep local states for our filters
+  const [status, setStatus] = useState('open')
+  const [skill, setSkill] = useState('')
+  const [minPrize, setMinPrize] = useState('')
+  const [maxPrize, setMaxPrize] = useState('')
+  const [projects, setProjects] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-import { ProjectCreationToggle } from './_components/create-project-form'
+  // On “Search” or on mount, we can fetch data from /api/projects
+  const handleSearch = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const params = new URLSearchParams()
+      if (status) params.set('status', status)
+      if (skill.trim()) params.set('skill', skill.trim())
+      if (minPrize.trim()) params.set('minPrize', minPrize.trim())
+      if (maxPrize.trim()) params.set('maxPrize', maxPrize.trim())
 
-// Next.js app router server component
-export default async function ProjectsPage() {
-  // 1) Fetch projects from DB
-  const projects = await db.select().from(projectsTable)
+      const url = `/api/projects?${params.toString()}`
+      const res = await fetch(url)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err?.message || 'Failed to load projects')
+      }
+
+      const data = await res.json()
+      if (!data.isSuccess) {
+        throw new Error(data?.message || 'Failed to load projects')
+      }
+      setProjects(data.data || [])
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Optionally, run the first fetch automatically on mount
+  useEffect(() => {
+    handleSearch()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
-    <main className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Projects</h2>
+    <div className="p-4">
+      <h1 className="text-2xl font-bold">All Projects</h1>
 
-        {/* The "Create Project" toggle button and form */}
-        <ProjectCreationToggle />
+      <div className="my-4 flex items-center gap-3">
+        <label className="font-semibold">Status:</label>
+        <select
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+          className="border rounded px-2 py-1"
+        >
+          <option value="">(Any)</option>
+          <option value="open">Open</option>
+          <option value="closed">Closed</option>
+        </select>
+
+        <label className="font-semibold">Skill:</label>
+        <input
+          type="text"
+          className="border rounded px-2 py-1"
+          placeholder="e.g. React"
+          value={skill}
+          onChange={(e) => setSkill(e.target.value)}
+        />
+
+        <label className="font-semibold">Min Prize:</label>
+        <input
+          type="number"
+          className="border rounded px-2 py-1"
+          value={minPrize}
+          onChange={(e) => setMinPrize(e.target.value)}
+        />
+
+        <label className="font-semibold">Max Prize:</label>
+        <input
+          type="number"
+          className="border rounded px-2 py-1"
+          value={maxPrize}
+          onChange={(e) => setMaxPrize(e.target.value)}
+        />
+
+        <button
+          onClick={handleSearch}
+          className="px-4 py-2 bg-blue-600 text-white rounded"
+        >
+          Search
+        </button>
       </div>
 
-      {/* Projects listing */}
-      <section className="mt-4">
-        {projects.length === 0 ? (
-          <p className="text-gray-600">
-            No projects found. Click &quot;Create Project&quot; to add one.
-          </p>
-        ) : (
-          <ul className="space-y-2">
-            {projects.map((proj) => (
-              <li
-                key={proj.id}
-                className="border p-3 rounded shadow-sm flex flex-col gap-2"
-              >
-                <div>
-                  <div className="font-semibold text-gray-800">
-                    {proj.projectName}
-                  </div>
-                  <div className="text-sm text-gray-500">
-                    Status: {proj.projectStatus}
-                  </div>
-                  {proj.projectDescription && (
-                    <div className="text-sm text-gray-700 mt-1">
-                      {proj.projectDescription}
-                    </div>
-                  )}
-                </div>
+      {loading && <p>Loading projects...</p>}
+      {error && <p className="text-red-600">Error: {error}</p>}
+      {!loading && !error && projects.length === 0 && (
+        <p>No projects found.</p>
+      )}
 
-                {/* "View Details" button */}
-                <div>
-                  <Link
-                    href={`/projects/${proj.id}`}
-                    className="text-blue-600 underline hover:text-blue-800"
-                  >
-                    View Details
-                  </Link>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </main>
+      <ul className="mt-4 space-y-3">
+        {projects.map((proj) => (
+          <li key={proj.id} className="border p-3 rounded">
+            <div className="font-bold">{proj.projectName}</div>
+            <div className="text-sm text-gray-600">
+              Status: {proj.projectStatus}
+            </div>
+            <p className="text-sm mt-1">{proj.projectDescription}</p>
+            <div className="text-xs text-gray-400">
+              Prize: {proj.prizeAmount}
+            </div>
+
+            <Link href={`/projects/${proj.id}`} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-600">
+              View Details
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }

@@ -73,7 +73,7 @@ export async function createProjectAction(
         projectName: params.projectName,
         projectDescription: params.projectDescription ?? '',
         prizeAmount: proposedPrize.toString(),
-        projectOwner: params.walletAddress,
+        projectOwner: params.walletAddress.toLowerCase(),
         requiredSkills: params.requiredSkills ?? '',
         completionSkills: params.completionSkills ?? '',
         projectRepo: params.projectRepo ?? '',
@@ -105,9 +105,11 @@ export async function createProjectAction(
  */
 export async function autoAwardOnPrMergeAction(params: {
   projectId: string
-  studentAddress: string
+  freelancerAddress: string
 }): Promise<ActionResult> {
   try {
+    const freelancerAddress = params.freelancerAddress.toLowerCase();
+    
     const [project] = await db
       .select()
       .from(projectsTable)
@@ -127,7 +129,7 @@ export async function autoAwardOnPrMergeAction(params: {
     const prize = project.prizeAmount ? Number(project.prizeAmount) : 0
     if (prize > 0) {
       const awardResult = await updateBalanceAction({
-        userId: params.studentAddress,
+        userId: freelancerAddress,
         amount: prize,
         preventNegativeBalance: false
       })
@@ -151,7 +153,7 @@ export async function autoAwardOnPrMergeAction(params: {
         }
         const skillId = getOrCreate.data.id
         const addSkill = await addSkillToUserAction({
-          userId: params.studentAddress,
+          userId: freelancerAddress,
           skillId
         })
         if (!addSkill.isSuccess) {
@@ -165,7 +167,7 @@ export async function autoAwardOnPrMergeAction(params: {
       .update(projectsTable)
       .set({
         projectStatus: "closed",
-        assignedFreelancer: params.studentAddress
+        assignedFreelancer: freelancerAddress
       })
       .where(eq(projectsTable.id, params.projectId))
 
@@ -179,83 +181,57 @@ export async function autoAwardOnPrMergeAction(params: {
   }
 }
 
-/**
- * @function approveSubmissionAction
- * @description
- * Manually approves a student's PR (the project owner calls this).
- * 1) Closes the project
- * 2) Awards tokens
- * 3) Awards completionSkills
- */
+
 export async function approveSubmissionAction(params: {
   projectId: string
-  studentAddress: string
+  freelancerAddress: string
   walletAddress: string
 }): Promise<ActionResult> {
   try {
-    const [project] = await db
-      .select()
-      .from(projectsTable)
-      .where(eq(projectsTable.id, params.projectId))
-
+    // 1) Load project
+    const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, params.projectId))
     if (!project) {
-      return { isSuccess: false, message: "Project not found" }
-    }
-    if (project.projectOwner !== params.walletAddress) {
-      return { isSuccess: false, message: "Not authorized to approve" }
-    }
-    if (project.projectStatus === "closed") {
-      return { isSuccess: false, message: "Project is already closed." }
+      return { isSuccess: false, message: 'Project not found' }
     }
 
-    // Close it
-    await db
-      .update(projectsTable)
-      .set({
-        projectStatus: "closed",
-        assignedFreelancer: params.studentAddress
-      })
-      .where(eq(projectsTable.id, params.projectId))
+    // 2) Must match projectOwner
+    if (project.projectOwner.toLowerCase() !== params.walletAddress.toLowerCase()) {
+      return { isSuccess: false, message: 'Not authorized' }
+    }
 
-    // Award tokens
-    const prize = Number(project.prizeAmount ?? 0)
+    // 3) Mark project as closed & assign the freelancer
+    await db.update(projectsTable).set({
+      projectStatus: 'closed',
+      assignedFreelancer: params.freelancerAddress.toLowerCase(),
+    }).where(eq(projectsTable.id, params.projectId))
+
+    // 4) Award tokens
+    const prize = parseFloat(project.prizeAmount?.toString() ?? '0')
     if (prize > 0) {
-      const tokenRes = await updateBalanceAction({
-        userId: params.studentAddress,
-        amount: prize
-      })
-      if (!tokenRes.isSuccess) {
-        return {
-          isSuccess: false,
-          message: `Project closed but awarding tokens failed: ${tokenRes.message}`
-        }
+      const award = await updateBalanceAction({ userId: params.freelancerAddress, amount: prize })
+      if (!award.isSuccess) {
+        return { isSuccess: false, message: `Failed awarding tokens: ${award.message}` }
       }
     }
 
-    // Award completionSkills
-    const compSkillsStr = (project.completionSkills || "").trim()
+    // 5) Award completion skills
+    const compSkillsStr = project.completionSkills?.trim() || ''
     if (compSkillsStr) {
-      const skillNames = compSkillsStr.split(",").map((s) => s.trim()).filter(Boolean)
+      const skillNames = compSkillsStr.split(',').map(s => s.trim()).filter(Boolean)
       for (const skillName of skillNames) {
-        const skillRes = await getOrCreateSkillAction(skillName)
-        if (!skillRes.isSuccess || !skillRes.data) {
-          console.error(`Failed to create/fetch skill '${skillName}':`, skillRes.message)
+        const getOrCreate = await getOrCreateSkillAction(skillName)
+        if (!getOrCreate.isSuccess || !getOrCreate.data) {
+          console.error(`Could not create/fetch skill '${skillName}':`, getOrCreate.message)
           continue
         }
-        const skillId = skillRes.data.id
-        const addSkill = await addSkillToUserAction({ userId: params.studentAddress, skillId })
-        if (!addSkill.isSuccess) {
-          console.error(`Failed awarding skill '${skillName}' to user:`, addSkill.message)
-        }
+        const skillId = getOrCreate.data.id
+        await addSkillToUserAction({ userId: params.freelancerAddress, skillId })
       }
     }
 
-    return {
-      isSuccess: true,
-      message: `Submission approved. ${prize} tokens + completion skills awarded.`
-    }
+    return { isSuccess: true, message: 'Project approved, tokens/skills awarded.' }
   } catch (error) {
-    console.error("approveSubmissionAction error:", error)
-    return { isSuccess: false, message: "Failed to approve submission" }
+    console.error('approveSubmissionAction error:', error)
+    return { isSuccess: false, message: 'Internal error approving submission' }
   }
 }

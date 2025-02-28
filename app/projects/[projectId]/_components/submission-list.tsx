@@ -1,99 +1,102 @@
 "use client"
 
-/**
- * @file submission-list.tsx
- *
- * @description
- * Displays a list of existing submissions for a given project.
- * If the connected user is the project's owner, they see an "Approve" button
- * that calls the existing approveSubmissionAction, awarding the prize.
- *
- * Key features:
- * - Renders each submission's studentAddress and PR link
- * - Only shows "Approve" if walletAddress == projectOwner
- * - Calls "approveSubmissionAction" from projects-actions
- *
- * @dependencies
- * - React for rendering
- * - useWallet for connected address
- * - approveSubmissionAction for awarding the project's prize
- * - next/navigation for refreshing
- *
- * @notes
- * - If the project is already closed, you might want to hide or disable Approve.
- * - For MVP, we keep it straightforward.
- */
-
-import React, { useState } from 'react'
-
-import { useRouter } from 'next/navigation'
-
+import React, { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { useWallet } from '@/components/utilities/wallet-provider'
-import { ProjectSubmission } from '@/db/schema/project-submissions-schema'
+import { useRouter } from 'next/navigation'
 
 interface SubmissionListProps {
   projectId: string
   projectOwner: string
-  submissions: ProjectSubmission[]
   projectStatus: string
 }
 
+/**
+ * @description
+ * Renders the list of PR submissions for a project, automatically fetching from:
+ *    GET /api/projects/:projectId/submissions
+ *
+ * - The “View Submissions” button is removed. We fetch them immediately on mount.
+ * - If you’re the project owner *and* the project is still "open", you can approve them.
+ */
 export default function SubmissionList({
   projectId,
   projectOwner,
-  submissions,
-  projectStatus
+  projectStatus,
 }: SubmissionListProps) {
+  const [submissions, setSubmissions] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [approveLoading, setApproveLoading] = useState<string | null>(null)
+
   const { walletAddress } = useWallet()
-  const [loading, setLoading] = useState<string | null>(null)
   const router = useRouter()
 
-  // We'll only show Approve if it's open AND you're the owner
-  const canApprove = (walletAddress === projectOwner) && (projectStatus === "open")
+  // Check if current user is the project owner
+  const isOwner =
+    walletAddress && walletAddress.toLowerCase() === projectOwner.toLowerCase()
+  const canApprove = isOwner && projectStatus === 'open'
 
-  /**
-   * @function handleApprove
-   * @description
-   * Called when the owner clicks "Approve" on a specific student's submission.
-   * We invoke "approveSubmissionAction" with the student's address. On success,
-   * the project becomes "closed" or the assignedFreelancer is set. Then we refresh.
-   */
-  const handleApprove = async (studentAddress: string) => {
+  // 1) Fetch submissions automatically on mount
+  useEffect(() => {
+    async function fetchSubmissions() {
+      try {
+        const res = await fetch(`/api/projects/${projectId}/submissions`, {
+          cache: 'no-store',
+        })
+        if (!res.ok) {
+          throw new Error('Failed to load submissions')
+        }
+        const json = await res.json()
+        if (json.isSuccess && Array.isArray(json.data)) {
+          setSubmissions(json.data)
+        }
+      } catch (err) {
+        console.error('Error loading submissions:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchSubmissions()
+  }, [projectId])
+
+  // 2) Approve a submission (if allowed)
+  async function handleApprove(freelancerAddress: string) {
     try {
-      setLoading(studentAddress)
-      const response = await fetch('/api/projects/approve', {
+      setApproveLoading(freelancerAddress)
+      const resp = await fetch('/api/projects/approve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           projectId,
-          studentAddress,
-          walletAddress
-        })
+          freelancerAddress,
+          walletAddress, // the owner's wallet
+        }),
       })
-      
-      if (!response.ok) throw new Error('Failed to approve')
-      
-      router.refresh()
-    } catch (error) {
-      console.error('Error approving:', error)
+      if (!resp.ok) {
+        const err = await resp.json()
+        throw new Error(err.message || 'Failed to approve submission')
+      }
+      alert('Submission approved.')
+      router.refresh() // Re-fetch data or force reload
+    } catch (error: any) {
+      alert('Error: ' + error.message)
+      console.error('Approve error:', error)
     } finally {
-      setLoading(null)
+      setApproveLoading(null)
     }
   }
 
-  if (!submissions || submissions.length === 0) {
-    return (
-      <div className="text-sm text-gray-500">
-        No submissions yet for this project.
-      </div>
-    )
+  if (loading) {
+    return <div className="text-sm text-gray-500">Loading submissions...</div>
+  }
+
+  if (submissions.length === 0) {
+    return <div className="text-sm text-gray-500">No submissions yet.</div>
   }
 
   return (
     <div className="space-y-2">
       <h3 className="font-semibold">Submissions</h3>
-
       <ul className="space-y-1">
         {submissions.map((sub) => (
           <li
@@ -101,8 +104,8 @@ export default function SubmissionList({
             className="border p-2 rounded flex items-center justify-between"
           >
             <div>
-              <div className="text-sm">
-                Student: <span className="text-blue-600">{sub.studentAddress}</span>
+              <div className="text-sm text-blue-600">
+                {sub.freelancerAddress}
               </div>
               <div className="text-xs text-gray-500 break-all">
                 <a
@@ -116,14 +119,14 @@ export default function SubmissionList({
               </div>
             </div>
 
-            {/* Approve button visible only if user is owner */}
             {canApprove && (
               <Button
-                variant="default"
-                onClick={() => handleApprove(sub.studentAddress)}
-                disabled={loading === sub.studentAddress}
+                onClick={() => handleApprove(sub.freelancerAddress)}
+                disabled={approveLoading === sub.freelancerAddress}
               >
-                {loading === sub.studentAddress ? 'Approving...' : 'Approve'}
+                {approveLoading === sub.freelancerAddress
+                  ? 'Approving...'
+                  : 'Approve'}
               </Button>
             )}
           </li>

@@ -1,16 +1,11 @@
 "use client"
 
 import React, { useEffect, useState } from 'react'
-
 import { useRouter, useParams } from 'next/navigation'
 
-/**
- * @file page.tsx (Edit an existing project)
- */
 export default function EditProjectPage() {
   const router = useRouter()
   const { projectId } = useParams()
-
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -19,32 +14,37 @@ export default function EditProjectPage() {
   const [prizeAmount, setPrizeAmount] = useState('')
   const [requiredSkills, setRequiredSkills] = useState('')
   const [completionSkills, setCompletionSkills] = useState('')
+  const [projectRepo, setProjectRepo] = useState('')
 
-  // 1) Fetch existing project data
+  // 1) Fetch existing project from /api/projects/:projectId
   useEffect(() => {
-    async function fetchProject() {
+    async function loadProject() {
       try {
-        const res = await fetch(`/api/projects/${projectId}`)
-        if (!res.ok) {
+        const resp = await fetch(`/api/projects/${projectId}`)
+        if (!resp.ok) {
           throw new Error('Failed to load project')
         }
-        const data = await res.json()
-        const p = data.data
+        const json = await resp.json()
+        if (!json.isSuccess || !json.data) {
+          throw new Error(json.message || 'Project not found')
+        }
+        const p = json.data
         setProjectName(p.projectName || '')
         setProjectDescription(p.projectDescription || '')
         setPrizeAmount(p.prizeAmount || '0')
         setRequiredSkills(p.requiredSkills || '')
         setCompletionSkills(p.completionSkills || '')
+        setProjectRepo(p.projectRepo || '')
       } catch (err: any) {
         setError(err.message)
       } finally {
         setLoading(false)
       }
     }
-    fetchProject()
+    loadProject()
   }, [projectId])
 
-  // 2) Handle update
+  // 2) Handle update => PUT /api/projects/:projectId
   async function handleUpdate(e: React.FormEvent) {
     e.preventDefault()
 
@@ -55,38 +55,33 @@ export default function EditProjectPage() {
         prizeAmount,
         requiredSkills,
         completionSkills,
+        projectRepo,
       }
-
-      // PUT /api/projects/:id
-      const res = await fetch(`/api/projects/${projectId}`, {
+      const resp = await fetch(`/api/projects/${projectId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-
-      if (!res.ok) {
-        const err = await res.json()
+      if (!resp.ok) {
+        const err = await resp.json()
         throw new Error(err.message || 'Failed to update project')
       }
 
       alert('Project updated successfully')
-      router.push('/company')
+      // maybe go back to the project detail
+      router.push(`/projects/${projectId}`)
     } catch (err: any) {
       alert(err.message)
     }
   }
 
-  if (loading) {
-    return <div className="p-4">Loading...</div>
-  }
-  if (error) {
-    return <div className="p-4 text-red-500">Error: {error}</div>
-  }
+  if (loading) return <p className="p-4">Loading...</p>
+  if (error) return <p className="p-4 text-red-500">Error: {error}</p>
 
   return (
-    <div className="p-4">
+    <div className="p-4 max-w-md space-y-4">
       <h2 className="text-xl font-bold">Edit Project</h2>
-      <form onSubmit={handleUpdate} className="space-y-3 max-w-md mt-4">
+      <form onSubmit={handleUpdate} className="space-y-3">
         <div>
           <label className="block font-semibold">Project Name</label>
           <input
@@ -138,7 +133,20 @@ export default function EditProjectPage() {
           />
         </div>
 
-        <button type="submit" className="px-4 py-2 bg-blue-500 text-white rounded">
+        <div>
+          <label className="block font-semibold">Repo Link</label>
+          <input
+            type="text"
+            className="border w-full p-2 rounded"
+            value={projectRepo}
+            onChange={(e) => setProjectRepo(e.target.value)}
+          />
+        </div>
+
+        <button
+          type="submit"
+          className="px-4 py-2 bg-blue-500 text-white rounded"
+        >
           Update
         </button>
       </form>
