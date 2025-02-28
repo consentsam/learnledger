@@ -1,11 +1,13 @@
 // app/api/projects/route.ts
 import { NextRequest, NextResponse } from 'next/server'
+import { ethers } from 'ethers'
 import { db } from '@/db/db'
 import { projectsTable } from '@/db/schema/projects-schema'
 import { eq, and, sql } from 'drizzle-orm'
 import { SQL } from 'drizzle-orm/sql'
 
 import { createProjectAction } from '@/actions/db/projects-actions'
+import { getEIP712Domain } from '@/lib/ethereum/signature-utils'
 
 /**
  * GET /api/projects
@@ -62,11 +64,80 @@ export async function GET(req: NextRequest) {
  *   prizeAmount?: number
  *   requiredSkills?: string
  *   completionSkills?: string
+ *   signature?: string // EIP-712 signature
+ *   nonce?: number // Timestamp nonce
  * }
  */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
+    const { 
+      walletAddress, 
+      projectName, 
+      projectDescription, 
+      prizeAmount, 
+      signature, 
+      nonce 
+    } = body
+
+    // Basic validation
+    if (!walletAddress || !projectName) {
+      return NextResponse.json(
+        { isSuccess: false, message: 'Missing required fields: walletAddress or projectName' },
+        { status: 400 }
+      )
+    }
+
+    // Verify signature if provided
+    if (signature && nonce) {
+      // Define EIP-712 typed data
+      const domain = getEIP712Domain()
+      
+      const types = {
+        ProjectCreation: [
+          { name: 'walletAddress', type: 'address' },
+          { name: 'projectName', type: 'string' },
+          { name: 'projectDescription', type: 'string' },
+          { name: 'prizeAmount', type: 'string' },
+          { name: 'nonce', type: 'uint256' }
+        ]
+      }
+      
+      const value = {
+        walletAddress,
+        projectName,
+        projectDescription: projectDescription || '',
+        prizeAmount: (prizeAmount || 0).toString(),
+        nonce
+      }
+
+      try {
+        // Recover the signer's address from the signature
+        const recoveredAddress = ethers.verifyTypedData(
+          domain,
+          types,
+          value,
+          signature
+        )
+
+        // Verify the recovered address matches the claimed wallet address
+        if (recoveredAddress.toLowerCase() !== walletAddress.toLowerCase()) {
+          return NextResponse.json(
+            { isSuccess: false, message: 'Invalid signature' },
+            { status: 403 }
+          )
+        }
+      } catch (error) {
+        console.error('Signature verification failed:', error)
+        return NextResponse.json(
+          { isSuccess: false, message: 'Invalid signature format' },
+          { status: 403 }
+        )
+      }
+    } else {
+      // For backward compatibility, allow creation without signature during development
+      console.warn('Project creation attempted without signature - this should be disallowed in production')
+    }
 
     // Instead of direct DB insert, call your server action for consistency
     const result = await createProjectAction(body)

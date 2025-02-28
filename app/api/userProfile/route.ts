@@ -1,5 +1,7 @@
 // app/api/userProfile/route.ts
 import { NextRequest, NextResponse } from 'next/server'
+import { eq } from 'drizzle-orm'
+import { ethers } from 'ethers'
 
 import { getUserProfileAction } from '@/actions/db/user-profile-actions'
 
@@ -7,7 +9,7 @@ import { getUserProfileAction } from '@/actions/db/user-profile-actions'
 import { db } from '@/db/db'
 import { companyTable } from '@/db/schema/company-schema'
 import { freelancerTable } from '@/db/schema/freelancer-schema'
-import { eq } from 'drizzle-orm'
+import { getEIP712Domain } from '@/lib/ethereum/signature-utils'
 
 /**
  * GET /api/userProfile?wallet=0x...&role=company|freelancer
@@ -49,13 +51,15 @@ export async function GET(req: NextRequest) {
  * {
  *   "role": "company" or "freelancer",
  *   "walletAddress": "0xYourAddress",
+ *   "signature": string, // EIP-712 signature
+ *   "nonce": number, // Timestamp nonce
  *   ...fields to update...
  * }
  */
 export async function PUT(req: NextRequest) {
   try {
     const body = await req.json()
-    const { role, walletAddress } = body
+    const { role, walletAddress, signature, nonce } = body
 
     if (!role || !walletAddress) {
       return NextResponse.json(
@@ -64,6 +68,53 @@ export async function PUT(req: NextRequest) {
       )
     }
     const lowerWallet = walletAddress.toLowerCase()
+    
+    // Verify signature if provided
+    if (signature && nonce) {
+      // Define EIP-712 typed data
+      const domain = getEIP712Domain()
+      
+      const types = {
+        UserProfileUpdate: [
+          { name: 'walletAddress', type: 'address' },
+          { name: 'role', type: 'string' },
+          { name: 'nonce', type: 'uint256' }
+        ]
+      }
+      
+      const value = {
+        walletAddress,
+        role,
+        nonce
+      }
+
+      try {
+        // Recover the signer's address from the signature
+        const recoveredAddress = ethers.verifyTypedData(
+          domain,
+          types,
+          value,
+          signature
+        )
+
+        // Verify the recovered address matches the claimed wallet address
+        if (recoveredAddress.toLowerCase() !== lowerWallet) {
+          return NextResponse.json(
+            { isSuccess: false, message: 'Invalid signature' },
+            { status: 403 }
+          )
+        }
+      } catch (error) {
+        console.error('Signature verification failed:', error)
+        return NextResponse.json(
+          { isSuccess: false, message: 'Invalid signature format' },
+          { status: 403 }
+        )
+      }
+    } else {
+      // For backward compatibility, allow updates without signature during development
+      console.warn('Profile update attempted without signature - this should be disallowed in production')
+    }
 
     // We'll do a quick check if user already exists
     if (role === 'company') {
@@ -163,13 +214,15 @@ export async function PUT(req: NextRequest) {
  * Body JSON:
  * {
  *   "role": "company" | "freelancer",
- *   "walletAddress": "0x..."
+ *   "walletAddress": "0x...",
+ *   "signature": string, // EIP-712 signature
+ *   "nonce": number // Timestamp nonce
  * }
  */
 export async function DELETE(req: NextRequest) {
   try {
     const body = await req.json()
-    const { role, walletAddress } = body
+    const { role, walletAddress, signature, nonce } = body
 
     if (!role || !walletAddress) {
       return NextResponse.json(
@@ -178,6 +231,53 @@ export async function DELETE(req: NextRequest) {
       )
     }
     const lowerWallet = walletAddress.toLowerCase()
+    
+    // Verify signature if provided
+    if (signature && nonce) {
+      // Define EIP-712 typed data
+      const domain = getEIP712Domain()
+      
+      const types = {
+        UserProfileDelete: [
+          { name: 'walletAddress', type: 'address' },
+          { name: 'role', type: 'string' },
+          { name: 'nonce', type: 'uint256' }
+        ]
+      }
+      
+      const value = {
+        walletAddress,
+        role,
+        nonce
+      }
+
+      try {
+        // Recover the signer's address from the signature
+        const recoveredAddress = ethers.verifyTypedData(
+          domain,
+          types,
+          value,
+          signature
+        )
+
+        // Verify the recovered address matches the claimed wallet address
+        if (recoveredAddress.toLowerCase() !== lowerWallet) {
+          return NextResponse.json(
+            { isSuccess: false, message: 'Invalid signature' },
+            { status: 403 }
+          )
+        }
+      } catch (error) {
+        console.error('Signature verification failed:', error)
+        return NextResponse.json(
+          { isSuccess: false, message: 'Invalid signature format' },
+          { status: 403 }
+        )
+      }
+    } else {
+      // For backward compatibility, allow deletion without signature during development
+      console.warn('Profile deletion attempted without signature - this should be disallowed in production')
+    }
 
     if (role === 'company') {
       // check existence

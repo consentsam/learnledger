@@ -2,10 +2,13 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
+import { ethers } from 'ethers'
 
 import { db } from '@/db/db'
 import { projectSubmissionsTable } from '@/db/schema/project-submissions-schema'
 import { projectsTable } from '@/db/schema/projects-schema'
+import { getEIP712Domain } from '@/lib/ethereum/signature-utils'
+
 export async function PATCH(
     req: NextRequest,
     { params }: { params: { projectId: string; submissionId: string } }
@@ -79,7 +82,7 @@ export async function PATCH(
   ) {
     try {
       const body = await req.json()
-      const { walletAddress } = body
+      const { walletAddress, signature, nonce } = body
   
       if (!walletAddress) {
         return NextResponse.json(
@@ -129,6 +132,55 @@ export async function PATCH(
         )
       }
   
+      // 3) Verify signature if provided
+      if (signature && nonce) {
+        // Define EIP-712 typed data
+        const domain = getEIP712Domain()
+        
+        const types = {
+          SubmissionDelete: [
+            { name: 'submissionId', type: 'string' },
+            { name: 'projectId', type: 'string' },
+            { name: 'walletAddress', type: 'address' },
+            { name: 'nonce', type: 'uint256' }
+          ]
+        }
+        
+        const value = {
+          submissionId: params.submissionId,
+          projectId: params.projectId,
+          walletAddress,
+          nonce
+        }
+
+        try {
+          // Recover the signer's address from the signature
+          const recoveredAddress = ethers.verifyTypedData(
+            domain,
+            types,
+            value,
+            signature
+          )
+
+          // Verify the recovered address matches the claimed wallet address
+          if (recoveredAddress.toLowerCase() !== walletAddress.toLowerCase()) {
+            return NextResponse.json(
+              { isSuccess: false, message: 'Invalid signature' },
+              { status: 403 }
+            )
+          }
+        } catch (error) {
+          console.error('Signature verification failed:', error)
+          return NextResponse.json(
+            { isSuccess: false, message: 'Invalid signature format' },
+            { status: 403 }
+          )
+        }
+      } else {
+        // For backward compatibility, allow deletion without signature during development
+        console.warn('Submission deletion attempted without signature - this should be disallowed in production')
+      }
+  
       // If you want to block deleting if submission is already merged, do:
       // if (submission.isMerged) {
       //   return NextResponse.json(
@@ -137,7 +189,7 @@ export async function PATCH(
       //   )
       // }
   
-      // 3) Perform the delete
+      // 4) Perform the delete
       await db
         .delete(projectSubmissionsTable)
         .where(eq(projectSubmissionsTable.id, params.submissionId))
