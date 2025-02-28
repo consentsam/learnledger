@@ -80,11 +80,13 @@ export async function updateBalanceAction(
   } = params
 
   try {
+    const lowerUserId = userId.toLowerCase();
+    
     // Attempt to find an existing user balance record
     const [existingBalance] = await db
       .select()
       .from(userBalancesTable)
-      .where(eq(userBalancesTable.userId, userId))
+      .where(eq(userBalancesTable.userId, lowerUserId))
 
     if (!existingBalance) {
       // No record yet: create a new balance row for this user
@@ -100,7 +102,7 @@ export async function updateBalanceAction(
       const [newRecord] = await db
         .insert(userBalancesTable)
         .values({
-          userId,
+          userId: lowerUserId,
           balance: newBalance.toString()
         })
         .returning()
@@ -108,7 +110,7 @@ export async function updateBalanceAction(
       return {
         isSuccess: true,
         data: newRecord,
-        message: `Balance record created. User: ${userId}, Amount: ${amount}`
+        message: `Balance record created. User: ${lowerUserId}, Amount: ${amount}`
       }
     } else {
       // Record found: increment existing balance
@@ -125,13 +127,13 @@ export async function updateBalanceAction(
       const [updated] = await db
         .update(userBalancesTable)
         .set({ balance: newBalance.toString() })
-        .where(eq(userBalancesTable.userId, userId))
+        .where(eq(userBalancesTable.userId, lowerUserId))
         .returning()
 
       return {
         isSuccess: true,
         data: updated,
-        message: `Balance updated successfully. User: ${userId}, Added: ${amount}`
+        message: `Balance updated successfully. User: ${lowerUserId}, Added: ${amount}`
       }
     }
   } catch (error) {

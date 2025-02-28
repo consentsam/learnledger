@@ -1,54 +1,50 @@
-// app/company/[companyId]/dashboard/page.tsx
-import { eq } from 'drizzle-orm'
 import Image from 'next/image'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
-import { db } from '@/db/db'
-import { companyTable } from '@/db/schema/company-schema'
-import { projectsTable } from '@/db/schema/projects-schema'
+import { CreateProjectButton } from './_components/create-project-button' // NEW import
 
-interface CompanyDashboardProps {
+interface CompanyDashboardPageProps {
   params: { companyId: string }
 }
 
-export default async function CompanyDashboardPage({ params }: CompanyDashboardProps) {
-  const companyId = params.companyId
+export default async function CompanyDashboardPage({
+  params,
+}: CompanyDashboardPageProps) {
+  const { companyId } = params
 
-  // 1) Find the company row
-  const [company] = await db
-    .select()
-    .from(companyTable)
-    .where(eq(companyTable.id, companyId))
-    .limit(1)
-
-  if (!company) {
+  // Fetch from the new endpoint:
+  const apiUrl = `http://localhost:3000/api/company/${companyId}/dashboard`
+  const res = await fetch(apiUrl, { cache: 'no-store' })
+  if (!res.ok) {
     notFound()
   }
 
-  // 2) We can also fetch that company's open projects
-  const allProjects = await db
-    .select()
-    .from(projectsTable)
-    .where(eq(projectsTable.projectOwner, company.walletAddress))
-  const activeProjects = allProjects.filter((p) => p.projectStatus === 'open')
-  const numActive = activeProjects.length
+  type ApiResponse = {
+    isSuccess: boolean
+    data?: {
+      companyName: string
+      walletAddress: string
+      numActive: number
+      numPullRequests: number
+    }
+    message?: string
+  }
+  const json: ApiResponse = await res.json()
 
-  // 3) "pull requests to review" can be an approximate or real count
-  //    We'll just keep it as 7 placeholder for demo
-  const numPullRequests = 7
+  if (!json.isSuccess || !json.data) {
+    notFound()
+  }
+
+  const { companyName, walletAddress, numActive, numPullRequests } = json.data
 
   return (
     <div className="p-4 space-y-4">
-      {/* Example layout */}
-      <h2 className="text-2xl font-bold">Hello {company.companyName}</h2>
-      <div>
-        <p className="text-sm text-gray-500">
-          Company ID: {companyId} (Wallet: {company.walletAddress})
-        </p>
-      </div>
+      <h2 className="text-2xl font-bold">Hello {companyName}</h2>
+      <p className="text-sm text-gray-500">
+        Company ID: {companyId} (Wallet: {walletAddress})
+      </p>
 
-      {/* Stats */}
       <div className="flex gap-8 border p-4 rounded">
         <div>
           <div className="text-2xl font-bold">{numActive}</div>
@@ -58,33 +54,21 @@ export default async function CompanyDashboardPage({ params }: CompanyDashboardP
           <div className="text-2xl font-bold">{numPullRequests}</div>
           <div>Pull Requests to Review</div>
         </div>
-
-        {/* "View All Projects" button => link to /company/[companyId]/projects */}
-        <Link
-          href={`/company/${companyId}/projects?status=0`}
-          className="border px-3 py-1 rounded ml-4"
-        >
-          View All Projects
-        </Link>
-
-        {/* ===== NEW: Button to see all submissions ===== */}
-        <Link
-          href={`/company/${companyId}/submissions`}
-          className="border px-3 py-1 rounded ml-4"
-        >
-          View All Submissions
-        </Link>
       </div>
 
-      {/* "Create Project" button => link to some new form route if you want */}
-      <Link
-        href={`/company/${companyId}/projects/new`}
-        className="inline-block mt-4 px-4 py-2 bg-blue-600 text-white rounded"
-      >
-        + Create a New Project
-      </Link>
+      {/* "View My Projects" link => calls /company/[companyId]/projects (which fetches from /api/...) */}
+      <div className="flex gap-4 mt-4">
+        <Link
+          href={`/company/${companyId}/projects`}
+          className="px-3 py-2 bg-blue-600 text-white rounded-md"
+        >
+          View My Projects
+        </Link>
 
-      {/* Possibly a chart placeholder, etc. */}
+        {/* The new Create Project Button (only if user is "company") */}
+        <CreateProjectButton companyId={companyId} />
+      </div>
+
       <div className="border p-4 mt-4 rounded">
         <h3 className="font-semibold">Project Activity Chart</h3>
         <Image

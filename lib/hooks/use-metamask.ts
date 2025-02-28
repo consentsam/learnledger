@@ -1,94 +1,35 @@
-/**
- * @file use-metamask.ts
- *
- * @description
- * A custom React hook that encapsulates the logic for connecting
- * to the user's Metamask wallet. This is used primarily in the
- * WalletProvider to handle the "Connect Wallet" flow.
- *
- * Key features:
- * - Checks if Metamask (window.ethereum) is present
- * - Requests wallet connection
- * - Retrieves wallet addresses from Metamask
- *
- * @dependencies
- * - React (useState, useCallback) for storing and updating local state
- *
- * @notes
- * - If the user denies access or Metamask is not installed, we handle that gracefully.
- * - For more robust error handling, you might want to check for specific error codes.
- */
+// use-metamask.ts
+"use client"
 
-"use client" // It's a client-side hook
+import { useState, useEffect, useCallback } from 'react'
 
-import { useState, useCallback } from 'react'
-
-// Use a type assertion approach instead of declarations
-// This avoids conflicts with existing declarations
-
-export interface UseMetamaskResult {
-  walletAddress: string | null
-  connectMetamask: () => Promise<void>
-  isMetamaskInstalled: boolean
-  disconnectMetamask: () => void
-}
-
-/**
- * @function useMetamask
- * @description
- * This hook manages Metamask connectivity. It provides a function to
- * request user accounts from Metamask and stores the wallet address
- * locally.
- *
- * @returns {UseMetamaskResult} - An object containing:
- *   - walletAddress: the currently connected address or null
- *   - connectMetamask: a function to initiate Metamask connection
- *   - isMetamaskInstalled: boolean indicating if Metamask is available
- *
- * @example
- * const { walletAddress, connectMetamask, isMetamaskInstalled } = useMetamask()
- *
- * if (!isMetamaskInstalled) {
- *   return <p>Please install Metamask!</p>
- * }
- *
- * <button onClick={connectMetamask}>Connect Wallet</button>
- * {walletAddress && <p>Connected: {walletAddress}</p>}
- *
- * @notes
- * - "ethereum" is injected globally by Metamask if installed.
- * - This is a minimal approach without signature-based verification.
- */
-export function useMetamask(): UseMetamaskResult {
-  const [walletAddress, setWalletAddress] = useState<string | null>(() => {
-    // On page load, read from localStorage (if any)
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('connectedWallet') || null
-    }
-    return null
-  })
-
+export function useMetamask() {
+  const [walletAddress, setWalletAddress] = useState<string | null>(null)
   const isMetamaskInstalled = typeof window !== 'undefined' && !!window.ethereum
+
+  // On mount, read localStorage if we have something
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('connectedWallet')
+      if (saved) {
+        setWalletAddress(saved) // re-hydrate
+      }
+    }
+  }, [])
 
   const connectMetamask = useCallback(async () => {
     if (!isMetamaskInstalled) {
-      alert('Metamask is not installed. Please install it.')
+      alert('Metamask is not installed.')
       return
     }
     try {
-      // Use non-null assertion since we already checked isMetamaskInstalled
-      const accounts: string[] = await window.ethereum!.request({
-        method: 'eth_requestAccounts',
-      })
+      const accounts = await window.ethereum!.request({ method: 'eth_requestAccounts' })
       if (accounts && accounts.length > 0) {
-        setWalletAddress(accounts[0])
-        localStorage.setItem('connectedWallet', accounts[0])
-      } else {
-        alert('No Metamask accounts found.')
+        setWalletAddress(accounts[0].toLowerCase())
+        localStorage.setItem('connectedWallet', accounts[0].toLowerCase())
       }
-    } catch (error: any) {
-      console.error('Failed to connect with Metamask:', error)
-      alert(`Failed to connect: ${error?.message || 'Unknown error'}`)
+    } catch (err) {
+      console.error('Failed to connect:', err)
     }
   }, [isMetamaskInstalled])
 
@@ -99,9 +40,8 @@ export function useMetamask(): UseMetamaskResult {
 
   return {
     walletAddress,
-    connectMetamask,
     isMetamaskInstalled,
-    disconnectMetamask
+    connectMetamask,
+    disconnectMetamask,
   }
 }
-

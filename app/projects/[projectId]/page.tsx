@@ -1,131 +1,118 @@
-/**
- * @file page.tsx
- *
- * @description
- * A Next.js Server Component for the route /projects/[projectId].
- * It loads the project by ID and any associated submissions, then renders them.
- *
- * Key features:
- * - Server-side data fetching for the project and submissions
- * - Renders simple HTML for the project details
- * - Uses child client components to handle "Submit PR" or "Approve" logic
- *
- * Improvements:
- * - We hide <SubmitPrForm /> entirely if the project is not open
- *
- * @dependencies
- * - db, projectsTable for querying the project
- * - getSubmissionsByProjectAction to fetch submissions
- * - SubmitPrForm, SubmissionList are client components for user interaction
- *
- * @notes
- * - The client side still checks wallet ownership to show/hide the Approve button or submission form.
- */
-/**
- * @file page.tsx
- *
- * @description
- * A Next.js Server Component for the route /projects/[projectId].
- * It loads the project by ID and any associated submissions, then renders them.
- */
-
-import React from 'react'
-import { db } from '@/db/db'
-import { projectsTable } from '@/db/schema/projects-schema'
-import { eq } from 'drizzle-orm'
 import { notFound } from 'next/navigation'
-import {
-  getSubmissionsByProjectAction
-} from '@/actions/db/submissions-actions'
+import Image from 'next/image'
+
+import { EditProjectButton } from './_components/edit-project-button'
 import SubmissionList from './_components/submission-list'
 import SubmitPrForm from './_components/submit-pr-form'
-import { EditProjectButton } from './_components/edit-project-button'
 
-interface ProjectPageProps {
+/**
+ * @file page.tsx
+ * This is the detail page for a single project at /projects/[projectId].
+ * It fetches from /api/projects/[projectId] to get:
+ *   - project data
+ *   - the company's name that posted it
+ * Then it displays:
+ *   - Project name
+ *   - Status
+ *   - Company name
+ *   - Prize, required skills, etc.
+ *   - An Edit button if the connected user is the owner
+ *   - The list of submissions (component)
+ *   - A form to submit new PR if the user is not the owner
+ */
+
+export default async function ProjectDetailPage({
+  params,
+}: {
   params: { projectId: string }
-}
-
-export default async function ProjectDetailPage({ params }: ProjectPageProps) {
+}) {
   const { projectId } = params
 
-  // 1) Fetch the project
-  const [project] = await db
-    .select()
-    .from(projectsTable)
-    .where(eq(projectsTable.id, projectId))
-    .limit(1)
-
-  // If not found, show a 404-like result
-  if (!project) {
+  // 1) Fetch from the new endpoint
+  const apiUrl = `http://localhost:3000/api/projects/${projectId}`
+  const res = await fetch(apiUrl, { cache: 'no-store' })
+  if (!res.ok) {
     notFound()
   }
 
-  // 2) Fetch submissions for this project
-  const submissions = await getSubmissionsByProjectAction(projectId)
+  // 2) Parse response
+  type ApiResponse = {
+    isSuccess: boolean
+    data?: {
+      id: string
+      projectName: string
+      projectDescription: string | null
+      projectStatus: string
+      prizeAmount: string | null
+      projectOwner: string
+      requiredSkills: string | null
+      completionSkills: string | null
+      projectRepo: string | null
+      companyName: string | null
+      companyId: string | null
+      // ...
+    }
+  }
+  const json: ApiResponse = await res.json()
+  if (!json.isSuccess || !json.data) {
+    notFound()
+  }
 
-  // 3) Render the data (SSR).
+  const project = json.data
+  // We'll load submissions separately from a client component (or you could do it server side).
+  // The submission-list.tsx does a client fetch to /api/submissions or /api/projects/.../submissions.
+
+  // 3) Render
   return (
-    <main className="p-4 space-y-8">
-      <section className="border p-4 rounded shadow space-y-3">
-        <div>
-          <h1 className="text-2xl font-bold mb-2">{project.projectName}</h1>
-          <p className="text-sm text-gray-600">
-            Status: {project.projectStatus}
-          </p>
-        </div>
+    <main className="p-4 space-y-6">
+      {/* Project Name */}
+      <h1 className="text-2xl font-bold">
+        {project.projectName || 'Untitled Project'}
+      </h1>
+      {/* Show project status + posted by */}
+      <p className="text-gray-600">
+        Status: <strong>{project.projectStatus}</strong> | Posted by:{' '}
+        <strong>{project.companyName ?? '(No Company Found)'}</strong>
+      </p>
 
-        {project.projectDescription && (
-          <p className="mt-3 text-gray-800">{project.projectDescription}</p>
-        )}
-
-        {/* Show the prize if it is non-zero */}
-        {project.prizeAmount && Number(project.prizeAmount) > 0 && (
-          <p className="mt-2 text-blue-800 font-semibold">
-            Reward: {project.prizeAmount?.toString()} tokens
-          </p>
-        )}
-
-        {/* Required skills, if any */}
-        {project.requiredSkills && (
-          <p className="text-xs text-gray-500 mt-1">
-            Required Skills: {project.requiredSkills}
-          </p>
-        )}
-
-        {/* Completion skills, if any */}
-        {project.completionSkills && (
-          <p className="text-xs text-gray-500">
-            Completion Skills: {project.completionSkills}
-          </p>
-        )}
-
-        {/* RENDER THE "EDIT" BUTTON (client component) */}
-        <EditProjectButton
-          projectId={project.id}
-          projectOwner={project.projectOwner}
-          projectStatus={project.projectStatus}
-        />
-      </section>
-
-      {/**
-       * 4) We only render the <SubmitPrForm /> if the project is still open.
-       */}
-      {project.projectStatus === 'open' && (
-        <SubmitPrForm
-          projectId={projectId}
-          projectOwner={project.projectOwner}
-          projectStatus={project.projectStatus}
-        />
+      {/* Show description if any */}
+      {project.projectDescription && (
+        <p className="text-sm text-gray-700 mt-2">{project.projectDescription}</p>
       )}
 
-      {/**
-       * 5) The submissions list is shown to everyone, but
-       *    only the owner sees "Approve" buttons, per the client logic.
-       */}
-      <SubmissionList
-        projectId={projectId}
+      {/* Show prize + required skills */}
+      <div className="border p-3 rounded space-y-1 text-sm">
+        <div>
+          <strong>Prize:</strong> {project.prizeAmount || '0'} tokens
+        </div>
+        <div>
+          <strong>Required Skills:</strong>{' '}
+          {project.requiredSkills || '(None)'}
+        </div>
+        <div>
+          <strong>Repo Link:</strong> {project.projectRepo || '(None)'}
+        </div>
+      </div>
+
+      {/* The edit button if the user is the owner. 
+          We handle that check in the client with a dynamic check of wallet vs projectOwner. */}
+      <EditProjectButton
+        projectId={project.id}
         projectOwner={project.projectOwner}
-        submissions={submissions}
+        projectStatus={project.projectStatus}
+      />
+
+      {/* The PR Submission Form (only if user is NOT the owner + project is open) */}
+      <SubmitPrForm
+        projectId={project.id}
+        projectOwner={project.projectOwner}
+        projectStatus={project.projectStatus}
+      />
+
+      {/* The list of submissions */}
+      <SubmissionList
+        projectId={project.id}
+        projectOwner={project.projectOwner}
         projectStatus={project.projectStatus}
       />
     </main>

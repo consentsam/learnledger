@@ -2,9 +2,9 @@
  * @file project-submissions-schema.ts
  *
  * @description
- * Defines the "project_submissions" table for storing student PR submissions.
+ * Defines the "project_submissions" table for storing freelancer PR submissions.
  * Each submission belongs to a single project, identified by `projectId`,
- * and includes the student's wallet address, plus the PR link, plus a new
+ * and includes the freelancer's wallet address, plus the PR link, plus a new
  * `isMerged` field to indicate whether the submission’s PR has been merged.
  */
 
@@ -17,8 +17,8 @@ export const projectSubmissionsTable = pgTable('project_submissions', {
   // The project to which this submission belongs
   projectId: uuid('project_id').notNull(),
 
-  // The student's wallet address
-  studentAddress: text('student_address').notNull(),
+  // The freelancer's wallet address
+  freelancerAddress: text('freelancer_address').notNull(),
 
   // The GitHub PR link (e.g. "https://github.com/owner/repo/pull/123")
   prLink: text('pr_link').notNull(),

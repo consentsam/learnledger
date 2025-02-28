@@ -3,6 +3,7 @@
 import { db } from "@/db/db"
 import { skillsTable } from "@/db/schema/skills-schema"
 import { userSkillsTable } from "@/db/schema/user-skills-schema"
+import { freelancerTable } from "@/db/schema/freelancer-schema"
 import { eq, ilike, and } from "drizzle-orm"
 
 interface ActionResult<T = any> {
@@ -93,13 +94,15 @@ export async function addSkillToUserAction(params: { userId: string; skillId: st
     return { isSuccess: false, message: "Missing userId or skillId." }
   }
   try {
+    const lowerUserId = params.userId.toLowerCase();
+    
     // check bridging table
     const [existingRow] = await db
       .select()
       .from(userSkillsTable)
       .where(
         and(
-          eq(userSkillsTable.userId, params.userId),
+          eq(userSkillsTable.userId, lowerUserId),
           eq(userSkillsTable.skillId, params.skillId)
         )
       )
@@ -115,7 +118,7 @@ export async function addSkillToUserAction(params: { userId: string; skillId: st
     // otherwise insert
     const [inserted] = await db
       .insert(userSkillsTable)
-      .values({ userId: params.userId, skillId: params.skillId })
+      .values({ userId: lowerUserId, skillId: params.skillId })
       .returning()
 
     return {
@@ -129,11 +132,21 @@ export async function addSkillToUserAction(params: { userId: string; skillId: st
   }
 }
 
+/**
+ * @function fetchUserSkillsAction
+ * 
+ * Returns all the skill rows for a given walletAddress user, **either** from:
+ *  - bridging table user_skills (if that has data),
+ *  - or fallback to the freelancer's .skills column if bridging is empty.
+ */
 export async function fetchUserSkillsAction(userId: string): Promise<ActionResult> {
   if (!userId) {
     return { isSuccess: false, message: "User ID is required" }
   }
   try {
+    const lowerUserId = userId.toLowerCase();
+
+    // 1) Attempt bridging table first
     const rows = await db
       .select({
         userSkillId: userSkillsTable.id,
@@ -145,9 +158,64 @@ export async function fetchUserSkillsAction(userId: string): Promise<ActionResul
       })
       .from(userSkillsTable)
       .leftJoin(skillsTable, eq(userSkillsTable.skillId, skillsTable.id))
-      .where(eq(userSkillsTable.userId, userId))
+      .where(eq(userSkillsTable.userId, lowerUserId))
 
-    return { isSuccess: true, message: `Fetched skills for userId: ${userId}`, data: rows }
+    // If bridging is not empty, return that
+    if (rows.length > 0) {
+      return {
+        isSuccess: true,
+        message: `Fetched skills for userId: ${lowerUserId} from bridging`,
+        data: rows
+      }
+    }
+
+    // 2) If bridging is empty, fallback to reading the freelancer table .skills
+    const [freelancer] = await db
+      .select()
+      .from(freelancerTable)
+      .where(eq(freelancerTable.walletAddress, lowerUserId))
+      .limit(1)
+
+    if (!freelancer) {
+      // No bridging + no freelancer found => empty result
+      return {
+        isSuccess: true,
+        message: `No bridging and no freelancer row for ${lowerUserId}`,
+        data: []
+      }
+    }
+
+    const fallbackRaw = freelancer.skills?.trim() || ''
+    if (!fallbackRaw) {
+      // They just have no skill string
+      return {
+        isSuccess: true,
+        message: `Fallback: user has an empty .skills column`,
+        data: []
+      }
+    }
+
+    // parse the raw "react, solidity" => create a pseudo array of skill objects
+    const skillNames = fallbackRaw
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+
+    // Convert them to the same shape as bridging
+    const fallbackRows = skillNames.map((sn) => ({
+      userSkillId: '', // no bridging ID
+      userId: lowerUserId,
+      skillId: '', // we don't have a skill row ID, not bridging
+      addedAt: new Date(),
+      skillName: sn.toLowerCase(),
+      skillDescription: ''
+    }))
+
+    return {
+      isSuccess: true,
+      message: `Fallback: returning .skills column for user ${lowerUserId}`,
+      data: fallbackRows
+    }
   } catch (error) {
     console.error("Error fetching user skills:", error)
     return { isSuccess: false, message: "Failed to fetch user skills" }

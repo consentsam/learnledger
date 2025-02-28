@@ -27,12 +27,13 @@ export async function getUserProfileAction(params: {
   role: 'company' | 'freelancer'
 }) {
   const { walletAddress, role } = params
+  const lowerWalletAddress = walletAddress.toLowerCase()
 
   if (role === 'company') {
     const [company] = await db
       .select()
       .from(companyTable)
-      .where(eq(companyTable.walletAddress, walletAddress))
+      .where(eq(companyTable.walletAddress, lowerWalletAddress))
       .limit(1)
 
     if (!company) {
@@ -45,7 +46,7 @@ export async function getUserProfileAction(params: {
     const [freelancer] = await db
       .select()
       .from(freelancerTable)
-      .where(eq(freelancerTable.walletAddress, walletAddress))
+      .where(eq(freelancerTable.walletAddress, lowerWalletAddress))
       .limit(1)
 
     if (!freelancer) {
@@ -76,12 +77,14 @@ export async function registerUserProfileAction(params: {
   profilePicUrl?: string
 }) {
   try {
+    const lowerWalletAddress = params.walletAddress.toLowerCase()
+    
     if (params.role === 'company') {
       // Insert into `company` table
       const [inserted] = await db
         .insert(companyTable)
         .values({
-          walletAddress: params.walletAddress,
+          walletAddress: lowerWalletAddress,
           companyName: params.companyName ?? '',
           shortDescription: params.shortDescription ?? '',
           logoUrl: params.logoUrl ?? '',
@@ -95,7 +98,7 @@ export async function registerUserProfileAction(params: {
       const [inserted] = await db
         .insert(freelancerTable)
         .values({
-          walletAddress: params.walletAddress,
+          walletAddress: lowerWalletAddress,
           freelancerName: params.freelancerName ?? '',
           skills: params.skills ?? '',
           profilePicUrl: params.profilePicUrl ?? '',
@@ -117,7 +120,7 @@ export async function registerUserProfileAction(params: {
           if (skillRes.isSuccess && skillRes.data) {
             // b) Add bridging entry in user_skills
             await addSkillToUserAction({
-              userId: params.walletAddress,
+              userId: lowerWalletAddress,
               skillId: skillRes.data.id
             })
           }

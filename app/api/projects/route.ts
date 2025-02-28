@@ -1,28 +1,51 @@
-import { eq } from 'drizzle-orm'
+// app/api/projects/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-
-import { createProjectAction } from '@/actions/db/projects-actions'
 import { db } from '@/db/db'
 import { projectsTable } from '@/db/schema/projects-schema'
+import { eq, and, sql } from 'drizzle-orm'
+import { SQL } from 'drizzle-orm/sql'
+
+import { createProjectAction } from '@/actions/db/projects-actions'
 
 /**
- * GET /api/projects?owner=0xABC (optional)
- * If no owner param, returns all projects. 
- * If owner param present, filter by projectOwner=owner
+ * GET /api/projects
+ * Fetches (optionally filtered) projects, e.g. ?status=open&skill=React&minPrize=100&maxPrize=1000
  */
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
-    const owner = searchParams.get('owner')
+    const status = searchParams.get('status')
+    const skill = searchParams.get('skill')
+    const minPrize = searchParams.get('minPrize')
+    const maxPrize = searchParams.get('maxPrize')
 
-    const baseQuery = db.select().from(projectsTable)
-    const rows = await (owner ? baseQuery.where(eq(projectsTable.projectOwner, owner)) : baseQuery)
+    const conditions: SQL[] = []
 
-    return NextResponse.json(rows, { status: 200 })
-  } catch (error) {
-    console.error('[GET /api/projects] Error:', error)
+    if (status) {
+      conditions.push(eq(projectsTable.projectStatus, status))
+    }
+    if (minPrize) {
+      conditions.push(sql`${projectsTable.prizeAmount} >= ${minPrize}`)
+    }
+    if (maxPrize) {
+      conditions.push(sql`${projectsTable.prizeAmount} <= ${maxPrize}`)
+    }
+    if (skill) {
+      // e.g. where required_skills ilike '%React%'
+      conditions.push(sql`${projectsTable.requiredSkills} ILIKE ${'%' + skill + '%'}`)
+    }
+
+    const rows = await (conditions.length === 0
+      ? db.select().from(projectsTable)
+      : db.select().from(projectsTable).where(conditions.length === 1
+          ? conditions[0]
+          : and(...conditions)))
+
+    return NextResponse.json({ isSuccess: true, data: rows })
+  } catch (err) {
+    console.error('GET /api/projects error:', err)
     return NextResponse.json(
-      { message: 'Internal server error' },
+      { isSuccess: false, message: 'Internal server error' },
       { status: 500 }
     )
   }
@@ -30,43 +53,39 @@ export async function GET(req: NextRequest) {
 
 /**
  * POST /api/projects
- * Create a new project
+ * Creates a new project. Body should contain:
+ * {
+ *   walletAddress: string
+ *   projectName: string
+ *   projectDescription?: string
+ *   projectRepo?: string
+ *   prizeAmount?: number
+ *   requiredSkills?: string
+ *   completionSkills?: string
+ * }
  */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    if (!body.walletAddress || !body.projectName) {
+
+    // Instead of direct DB insert, call your server action for consistency
+    const result = await createProjectAction(body)
+
+    if (!result.isSuccess) {
       return NextResponse.json(
-        { message: 'Missing walletAddress or projectName' },
+        { isSuccess: false, message: result.message },
         { status: 400 }
       )
     }
 
-    const result = await createProjectAction({
-      walletAddress: body.walletAddress,
-      projectName: body.projectName,
-      projectDescription: body.projectDescription ?? '',
-      projectRepo: body.projectRepo ?? '',
-      prizeAmount: body.prizeAmount ?? 0,
-      requiredSkills: body.requiredSkills ?? '',
-      completionSkills: body.completionSkills ?? '',
-    })
-
-    if (!result.isSuccess) {
-      return NextResponse.json(
-        { message: result.message || 'Failed to create project.' },
-        { status: 500 }
-      )
-    }
-
     return NextResponse.json(
-      { message: 'Project created successfully', data: result.data },
+      { isSuccess: true, data: result.data },
       { status: 200 }
     )
-  } catch (error) {
-    console.error('[POST /api/projects] Error:', error)
+  } catch (err) {
+    console.error('POST /api/projects error:', err)
     return NextResponse.json(
-      { message: 'Internal server error' },
+      { isSuccess: false, message: 'Internal server error' },
       { status: 500 }
     )
   }
