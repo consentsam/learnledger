@@ -1,8 +1,8 @@
+// File: app/projects/[projectId]/_components/submission-list.tsx
 "use client"
 
 import React, { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { useWallet } from '@/components/utilities/wallet-provider'
 import { useRouter } from 'next/navigation'
 
 interface SubmissionListProps {
@@ -11,14 +11,6 @@ interface SubmissionListProps {
   projectStatus: string
 }
 
-/**
- * @description
- * Renders the list of PR submissions for a project, automatically fetching from:
- *    GET /api/projects/:projectId/submissions
- *
- * - The “View Submissions” button is removed. We fetch them immediately on mount.
- * - If you’re the project owner *and* the project is still "open", you can approve them.
- */
 export default function SubmissionList({
   projectId,
   projectOwner,
@@ -27,16 +19,9 @@ export default function SubmissionList({
   const [submissions, setSubmissions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [approveLoading, setApproveLoading] = useState<string | null>(null)
-
-  const { walletAddress } = useWallet()
   const router = useRouter()
 
-  // Check if current user is the project owner
-  const isOwner =
-    walletAddress && walletAddress.toLowerCase() === projectOwner.toLowerCase()
-  const canApprove = isOwner && projectStatus === 'open'
-
-  // 1) Fetch submissions automatically on mount
+  // automatically fetch submissions
   useEffect(() => {
     async function fetchSubmissions() {
       try {
@@ -59,7 +44,6 @@ export default function SubmissionList({
     fetchSubmissions()
   }, [projectId])
 
-  // 2) Approve a submission (if allowed)
   async function handleApprove(freelancerAddress: string) {
     try {
       setApproveLoading(freelancerAddress)
@@ -69,7 +53,8 @@ export default function SubmissionList({
         body: JSON.stringify({
           projectId,
           freelancerAddress,
-          walletAddress, // the owner's wallet
+          // used to be "walletAddress" for metamask. 
+          // You can add logic for who is truly the “owner” by decoding the ID token on the server.
         }),
       })
       if (!resp.ok) {
@@ -77,7 +62,7 @@ export default function SubmissionList({
         throw new Error(err.message || 'Failed to approve submission')
       }
       alert('Submission approved.')
-      router.refresh() // Re-fetch data or force reload
+      router.refresh()
     } catch (error: any) {
       alert('Error: ' + error.message)
       console.error('Approve error:', error)
@@ -119,7 +104,9 @@ export default function SubmissionList({
               </div>
             </div>
 
-            {canApprove && (
+            {/* If you want to keep an Approve button, we show it unconditionally. 
+                Or add your own “Is user = projectOwner?” check using OCID in the future. */}
+            {projectStatus === 'open' && (
               <Button
                 onClick={() => handleApprove(sub.freelancerAddress)}
                 disabled={approveLoading === sub.freelancerAddress}

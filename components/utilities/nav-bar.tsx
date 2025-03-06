@@ -1,50 +1,182 @@
+// File: components/utilities/nav-bar.tsx
 "use client"
 
-import React from 'react'
-
+import React, { useEffect, useState } from 'react'
 import Link from 'next/link'
-
+import { jwtDecode } from 'jwt-decode'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { useWallet } from '@/components/utilities/wallet-provider'
+import { useOpenCampusAuth } from './ocid-provider'
 
-/**
- * @function NavBar
- * A top navigation bar that shows the project name, a link to /projects,
- * and a connect wallet button or truncated address if connected.
- */
+// Debug helper
+const DEBUG = true;
+function debug(...args: any[]) {
+  if (DEBUG && typeof window !== 'undefined') console.log("[NavBar]", ...args);
+}
+
+interface DecodedToken {
+  edu_username?: string
+  eth_address?: string      // If your OCID token includes an ETH address
+  user_id?: number
+  [key: string]: any
+}
+
 export function NavBar() {
-  const { walletAddress, connectWallet, isMetamaskInstalled, disconnectWallet } = useWallet()
+  const { authState, ocAuth, initialized } = useOpenCampusAuth()
+  const router = useRouter()
+  const [isLoading, setIsLoading] = useState(true)
+  
+  // Track if we're in the redirect flow
+  const [isInRedirectFlow, setIsInRedirectFlow] = useState(false)
+  
+  useEffect(() => {
+    // Client-side only effect
+    if (typeof window === 'undefined') return;
+    
+    debug("NavBar mounted, authState:", 
+      authState ? {
+        isAuthenticated: !!authState?.idToken,
+        error: authState?.error
+      } : "undefined");
+    
+    debug("Initialized:", initialized);
+      
+    if (ocAuth) {
+      debug("ocAuth available methods:", Object.getOwnPropertyNames(ocAuth));
+    }
+    
+    // Check if we're in a redirect flow (to prevent multiple redirects)
+    const isRedirectPage = window.location.pathname.includes('/redirect');
+    const hasAuthCode = window.location.search.includes('code=');
+    
+    if (isRedirectPage || hasAuthCode) {
+      setIsInRedirectFlow(true);
+      debug("Detected we're in a redirect flow");
+    }
+    
+    // Only set loading to false once we have a properly initialized auth state
+    if (initialized) {
+      setIsLoading(false);
+    }
+  }, [authState, ocAuth, initialized]);
 
-  const handleConnect = async () => {
-    await connectWallet()
+  const handleConnectOCID = async () => {
+    debug("Attempting to connect OCID");
+    
+    // Prevent redirect if we're already in a redirect flow
+    if (isInRedirectFlow) {
+      debug("Skipping connect because we're already in a redirect flow");
+      return;
+    }
+    
+    try {
+      if (!ocAuth) {
+        debug("No ocAuth available");
+        return;
+      }
+      
+      setIsInRedirectFlow(true); // Mark that we're starting a redirect
+      await ocAuth.signInWithRedirect({ state: 'opencampus' })
+      debug("signInWithRedirect called successfully");
+    } catch (err) {
+      console.error('[NavBar] OCID signInWithRedirect error:', err)
+      setIsInRedirectFlow(false); // Reset on error
+    }
   }
 
-  const renderWalletInfo = () => {
-    if (!isMetamaskInstalled) {
-      return (
-        <div className="text-red-500">
-          Metamask is not installed. Please install it to continue.
-        </div>
-      )
+  const handleLogoutOCID = async () => {
+    debug("Attempting to logout from OCID");
+    try {
+      if (!ocAuth) {
+        debug("No ocAuth available");
+        router.push('/');
+        return;
+      }
+      
+      // Log available methods to help debug
+      debug("ocAuth methods:", Object.getOwnPropertyNames(ocAuth));
+      
+      // If ocAuth has a logout or end session method
+      if (typeof ocAuth.logout === 'function') {
+        debug("Using ocAuth.logout()");
+        await ocAuth.logout();
+      } else if (typeof ocAuth.endSession === 'function') {
+        debug("Using ocAuth.endSession()");
+        await ocAuth.endSession();
+      } else if (typeof ocAuth.signOut === 'function') {
+        debug("Using ocAuth.signOut()");
+        await ocAuth.signOut();
+      } else if (authState?.idToken) {
+        debug("Using standard OIDC logout redirect");
+        // Fallback to standard OpenID Connect logout with redirect
+        const logoutUrl = `${ocAuth.config?.issuer || ''}/protocol/openid-connect/logout`;
+        debug("Redirecting to:", logoutUrl);
+        window.location.href = `${logoutUrl}?id_token_hint=${authState.idToken}&post_logout_redirect_uri=${encodeURIComponent(window.location.origin)}`;
+      } else {
+        debug("No logout method found, just redirecting");
+        // Last resort - just redirect to home and clear local session
+        router.push('/');
+      }
+    } catch (err) {
+      console.error('[NavBar] OCID signOut error:', err);
+      // Even if there's an error, redirect user to home page
+      router.push('/');
+    }
+  }
+
+  const renderOCIDInfo = () => {
+    // If we're still initializing, show a loading state
+    if (isLoading) {
+      debug("Auth state is still loading");
+      return <div className="text-sm text-gray-500">Loading...</div>;
     }
 
-    if (walletAddress) {
-      const truncated = `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
-      return (
-        <div className="flex flex-col items-end gap-1">
-          <div className="text-blue-600">Connected: {truncated}</div>
-          <button
-            className="text-sm text-gray-700 underline"
-            onClick={disconnectWallet}
-          >
-            Disconnect
-          </button>
-        </div>
-      )
+    if (!authState) {
+      debug("No authState available");
+      return <div className="text-sm text-gray-500">Auth not available</div>;
+    }
+
+    if (authState?.idToken) {
+      debug("User is authenticated with idToken");
+      try {
+        const decoded = jwtDecode<DecodedToken>(authState.idToken)
+        debug('Decoded token =>', decoded);
+        const username = decoded.edu_username || '(No edu_username)'
+        const walletAddress = decoded.eth_address ? 
+          `${decoded.eth_address.substring(0, 6)}...${decoded.eth_address.substring(decoded.eth_address.length - 4)}` : 
+          '(No wallet address)';
+
+        return (
+          <div className="flex items-center gap-2">
+            <span className="text-green-600">
+              {username}
+            </span>
+            {decoded.eth_address && (
+              <span className="text-xs text-gray-500">
+                {walletAddress}
+              </span>
+            )}
+            <Button 
+              variant="default" 
+              onClick={handleLogoutOCID}
+              disabled={isInRedirectFlow}
+            >
+              Logout
+            </Button>
+          </div>
+        )
+      } catch (error) {
+        debug("Error decoding token:", error);
+        return <div className="text-sm text-red-500">Error decoding token</div>
+      }
     } else {
+      debug("User is not authenticated");
       return (
-        <Button variant="default" onClick={handleConnect}>
-          Connect Wallet
+        <Button 
+          onClick={handleConnectOCID}
+          disabled={isInRedirectFlow}
+        >
+          Connect OCID
         </Button>
       )
     }
@@ -52,20 +184,13 @@ export function NavBar() {
 
   return (
     <nav className="flex items-center justify-between px-4 py-2 bg-white shadow">
-      <Link href="/" className="font-bold text-lg">ProjectLedger</Link>
+      <Link href="/" className="font-bold text-lg">
+        ProjectLedger
+      </Link>
 
       <div className="flex items-center gap-4">
-        <Link href="/projects" className="text-sm">
-          Projects
-        </Link>
-
-        {/* If you want to keep the "Register" link, uncomment:
-        <Link href="/register" className="text-sm">
-          Register
-        </Link>
-        */}
-
-        <div>{renderWalletInfo()}</div>
+        <Link href="/projects">Projects</Link>
+        {renderOCIDInfo()}
       </div>
     </nav>
   )

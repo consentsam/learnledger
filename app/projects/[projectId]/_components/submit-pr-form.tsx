@@ -1,12 +1,9 @@
+// File: app/projects/[projectId]/_components/submit-pr-form.tsx
 "use client"
 
 import React, { useState, FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { useWallet } from '@/components/utilities/wallet-provider'
-
-// REMOVED: import { createSubmissionAction } from '@/actions/db/submissions-actions'
-// We'll do fetch('/api/projects/...') instead
 
 interface SubmitPrFormProps {
   projectId: string
@@ -21,15 +18,13 @@ export default function SubmitPrForm({
 }: SubmitPrFormProps) {
   const [prLink, setPrLink] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const { walletAddress } = useWallet()
   const router = useRouter()
 
-  // Only show if user != owner + project is open
-  const isOwner =
-    walletAddress && walletAddress.toLowerCase() === projectOwner.toLowerCase()
-  const isOpen = projectStatus === 'open'
+  // If you want to require OCID login, you can do that. 
+  // For now, we simply let anyone submit.
 
-  if (!isOpen) {
+  // If the project is closed, hide the form
+  if (projectStatus !== 'open') {
     return (
       <p className="text-sm text-gray-500">
         Submissions closed. (Project status is {projectStatus})
@@ -37,17 +32,8 @@ export default function SubmitPrForm({
     )
   }
 
-  if (isOwner) {
-    return null // Owner cannot submit
-  }
-
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
-
-    if (!walletAddress) {
-      alert('Please connect your wallet first.')
-      return
-    }
 
     if (!prLink.trim()) {
       alert('Please enter a valid PR link.')
@@ -56,14 +42,14 @@ export default function SubmitPrForm({
 
     setIsSubmitting(true)
     try {
-      // Instead of server action, do an API call:
       const resp = await fetch(`/api/projects/${projectId}/submissions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           projectId,
-          freelancerAddress: walletAddress, // from your wallet
-          prLink
+          // We used to pass `freelancerAddress: walletAddress`, but we removed that.
+          // If you want to store the OCID user’s ID, you can do so by decoding the token on the server.
+          prLink,
         }),
       })
 

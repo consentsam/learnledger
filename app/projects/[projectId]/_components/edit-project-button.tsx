@@ -1,10 +1,9 @@
+// File: app/projects/[projectId]/_components/edit-project-button.tsx
 "use client"
 
 import React from 'react'
 import { useRouter } from 'next/navigation'
-
 import { Button } from '@/components/ui/button'
-import { useWallet } from '@/components/utilities/wallet-provider'
 
 interface EditProjectButtonProps {
   projectId: string
@@ -18,19 +17,15 @@ export function EditProjectButton({
   projectStatus,
 }: EditProjectButtonProps) {
   const router = useRouter()
-  const { walletAddress, userRole } = useWallet() // userRole might be 'company' or 'freelancer'
 
-  // Are we the owner of this project?
-  const isOwner =
-    walletAddress && walletAddress.toLowerCase() === projectOwner.toLowerCase()
-  // Typically, only a 'company' can edit their project. And if it’s open, we can edit
-  const canEdit = isOwner && userRole === 'company' && projectStatus === 'open'
+  // No more check if user is walletOwner. 
+  // If you want to require the user to be the "company", do it with OCID server checks.
 
-  if (!canEdit) {
+  if (projectStatus !== 'open') {
     return null
   }
 
-  function handleClick() {
+  const handleClick = () => {
     router.push(`/company/edit/${projectId}`)
   }
 

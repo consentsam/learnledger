@@ -4,12 +4,10 @@ import React, { useState } from 'react'
 
 import { useRouter, useParams } from 'next/navigation'
 
-import { useWallet } from '@/components/utilities/wallet-provider'
 
 export default function CreateProjectPage() {
   const router = useRouter()
   const { companyId } = useParams() // This grabs [companyId] from the URL
-  const { walletAddress } = useWallet()
 
   const [projectName, setProjectName] = useState('')
   const [projectDescription, setProjectDescription] = useState('')
@@ -20,15 +18,11 @@ export default function CreateProjectPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
 
-    if (!walletAddress) {
-      alert('Please connect your wallet first.')
-      return
-    }
+    
 
     try {
       const numericPrize = parseFloat(prizeAmount || '0')
       const payload = {
-        walletAddress,
         projectName,
         projectDescription,
         prizeAmount: numericPrize,
