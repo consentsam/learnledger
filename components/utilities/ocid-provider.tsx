@@ -37,9 +37,12 @@ export function OCIDProvider({ children }: { children: React.ReactNode }) {
   // Update options with window values once mounted on client
   useEffect(() => {
     if (typeof window !== 'undefined') {
+      // Get the current origin
+      const origin = window.location.origin;
+      
       setOpts({
-        redirectUri: `${window.location.origin}/opencampus/redirect`,
-        postLogoutRedirectUri: window.location.origin,
+        redirectUri: `${origin}/opencampus/redirect`,
+        postLogoutRedirectUri: origin,
         referralCode: 'PARTNER6',
         sandboxMode: true,
         trustedOrigins: ['localhost', '127.0.0.1', window.location.hostname],
@@ -48,7 +51,14 @@ export function OCIDProvider({ children }: { children: React.ReactNode }) {
         bridgeUrl: null,
         networkingEnabled: false,
       });
-      debug("Updated options with client-side values:", opts);
+      debug("Updated options with client-side values, origin:", origin);
+    }
+    
+    // Check if we're in a post-logout redirect
+    if (typeof window !== 'undefined' && 
+        window.location.search.includes('state=post_logout')) {
+      debug("Detected post-logout redirect, redirecting to home");
+      window.location.href = '/';
     }
   }, []);
   
@@ -138,6 +148,25 @@ export function useOpenCampusAuth() {
 function OCIDContextWrapper({ children }: { children: React.ReactNode }) {
   const { authState, ocAuth } = useOCAuth()
   const [initialized, setInitialized] = useState(false);
+  
+  // Listen for logout events
+  useEffect(() => {
+    if (typeof window === 'undefined' || !ocAuth) return;
+    
+    // Add an event listener for storage changes to detect logout
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === 'ocid_logout' && event.newValue === 'true') {
+        debug("Detected logout event from another tab");
+        window.location.href = '/';
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [ocAuth]);
   
   // Handle initialization once on mount
   useEffect(() => {

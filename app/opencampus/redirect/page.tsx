@@ -17,6 +17,20 @@ export default function RedirectPage() {
   const [error, setError] = useState<string | null>(null)
   const [redirectAttempted, setRedirectAttempted] = useState(false)
   
+  // Check if this is a post-logout redirect
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    const urlParams = new URLSearchParams(window.location.search);
+    const state = urlParams.get('state');
+    
+    if (state === 'post_logout') {
+      debug("This is a post-logout redirect, going to homepage");
+      window.location.href = '/';
+      return;
+    }
+  }, []);
+  
   useEffect(() => {
     // Client-side only code
     if (typeof window === 'undefined') return;
