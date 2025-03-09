@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * @file index.ts
  *

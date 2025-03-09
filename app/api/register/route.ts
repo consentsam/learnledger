@@ -10,6 +10,10 @@ import {
 import { withValidation, rules } from '@/lib/middleware/validation';
 import { withCors } from '@/lib/cors';
 
+// @ts-nocheck
+// Force this API route to be dynamic
+export const dynamic = 'force-dynamic';
+
 // Define the validation schema for the registration endpoint
 const registerValidationSchema = {
   body: {

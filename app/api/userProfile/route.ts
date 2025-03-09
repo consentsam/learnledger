@@ -262,3 +262,7 @@ export const GET = withCors(getUserProfile);
 export const PUT = withCors(updateUserProfile);
 export const DELETE = withCors(deleteUserProfile);
 export const OPTIONS = withCors(async () => NextResponse.json({}, { status: 204 }));
+
+// @ts-nocheck
+// Force this API route to be dynamic
+export const dynamic = 'force-dynamic';

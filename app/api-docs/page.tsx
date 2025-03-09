@@ -1,20 +1,42 @@
 "use client"
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
-import apiSchema from '@/lib/openapi'
 
-// Import SwaggerUI dynamically to prevent SSR issues
+// Import the temporary placeholder component
+import TempDisabledDocs from './temp-disabled'
+
+// Only import Swagger UI and schema in development
 const SwaggerUI = dynamic(
-  () => import('swagger-ui-react').then(mod => mod.default),
+  () => process.env.NODE_ENV === 'development' 
+    ? import('swagger-ui-react').then(mod => mod.default)
+    : Promise.resolve(() => <TempDisabledDocs />),
   { ssr: false }
 )
 
+// Define type for OpenAPI schema
+type OpenAPISchema = Record<string, any>
+
 export default function ApiDocsPage() {
+  const [apiSchema, setApiSchema] = useState<OpenAPISchema | null>(null)
+
   // Make sure we're rendering on the client side
   useEffect(() => {
-    // Optional: Add any client-side-only initialization here
+    if (process.env.NODE_ENV === 'development') {
+      // Only import the schema in development
+      import('@/lib/openapi').then((mod) => {
+        setApiSchema(mod.default)
+      })
+    }
   }, [])
+
+  if (process.env.NODE_ENV !== 'development') {
+    return <TempDisabledDocs />
+  }
+
+  if (!apiSchema) {
+    return <div>Loading API documentation...</div>
+  }
 
   return (
     <div className="swagger-container">

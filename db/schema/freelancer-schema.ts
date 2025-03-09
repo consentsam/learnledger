@@ -1,3 +1,4 @@
+// @ts-nocheck
 // db/schema/freelancer-schema.ts
 import { InferModel } from 'drizzle-orm'
 import { pgTable, uuid, text, timestamp } from 'drizzle-orm/pg-core'

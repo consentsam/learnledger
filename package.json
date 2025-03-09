@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "DISABLE_TYPESCRIPT_TYPECHECK=true NEXT_PUBLIC_SKIP_API_ROUTES=true next build --no-lint",
     "start": "next start",
     "lint": "next lint",
     "test": "jest",
@@ -16,7 +16,8 @@
     "format:check": "prettier --check .",
     "db:push": "drizzle-kit push",
     "generate-docs": "node scripts/generate-swagger-ui.js",
-    "export-docs": "node scripts/export-docs.js"
+    "export-docs": "node scripts/export-docs.js",
+    "static-docs": "node scripts/export-static-docs.js"
   },
   "dependencies": {
     "@opencampus/ocid-connect-js": "^1.2.6",

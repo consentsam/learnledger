@@ -19,7 +19,7 @@ export default function HomePage() {
               request and response formats, and authentication requirements.
             </p>
             <Link 
-              href="/api-docs"
+              href="/api"
               className="inline-block bg-blue-600 text-white font-medium px-4 py-2 rounded hover:bg-blue-700"
             >
               View API Docs
@@ -29,11 +29,11 @@ export default function HomePage() {
           <div className="bg-white p-6 rounded-lg shadow-md">
             <h2 className="text-2xl font-bold mb-4">Try the API</h2>
             <p className="mb-4">
-              Our interactive documentation allows you to test API endpoints directly from your browser.
+              Our interactive testing console allows you to test API endpoints directly from your browser.
               Connect your Metamask wallet to authenticate and test the full functionality.
             </p>
             <Link 
-              href="/api-docs"
+              href="/api-test"
               className="inline-block bg-green-600 text-white font-medium px-4 py-2 rounded hover:bg-green-700"
             >
               Test Endpoints
@@ -47,9 +47,9 @@ export default function HomePage() {
             To integrate with our API:
           </p>
           <ol className="list-decimal list-inside space-y-2 mb-4">
-            <li>Browse the API documentation to understand the available endpoints</li>
-            <li>Use the "Try it out" feature to test endpoints and see example requests/responses</li>
-            <li>Implement the API calls in your application using your preferred HTTP client</li>
+            <li>Browse the API documentation by visiting <code className="bg-gray-100 px-1 rounded">/api</code></li>
+            <li>Use our API Test Console to easily test endpoints</li>
+            <li>Try common endpoints like <code className="bg-gray-100 px-1 rounded">/api/projects</code> and <code className="bg-gray-100 px-1 rounded">/api/projects/search</code></li>
             <li>Use Metamask wallet addresses for authentication</li>
           </ol>
           <p>

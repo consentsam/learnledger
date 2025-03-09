@@ -29,5 +29,22 @@
                 }
             ]
         }
-    ]
+    ],
+    "env": {
+        "NEXT_PUBLIC_API_URL": "${VERCEL_URL}/api",
+        "SKIP_BUILD_STATIC_GENERATION": "true",
+        "USE_MOCK_DB": "false",
+        "NODE_ENV": "production"
+    },
+    "functions": {
+        "app/api/**/*": {
+            "memory": 1024,
+            "maxDuration": 10
+        }
+    },
+    "build": {
+        "env": {
+            "NODE_ENV": "production"
+        }
+    }
 }

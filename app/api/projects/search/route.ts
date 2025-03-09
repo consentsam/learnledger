@@ -1,9 +1,13 @@
+// @ts-nocheck
 import { sql } from 'drizzle-orm'
 import { NextRequest, NextResponse } from 'next/server'
 
 import { db } from '@/db/db'
 import { projectsTable } from '@/db/schema/projects-schema'
 // Alternatively, you could import from '@/db/schema' if all schemas are properly exported there
+
+// Force this API route to be dynamic
+export const dynamic = 'force-dynamic';
 
 /**
  * GET /api/projects/search

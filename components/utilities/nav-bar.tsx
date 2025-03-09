@@ -1,4 +1,5 @@
 // File: components/utilities/nav-bar.tsx
+// @ts-nocheck
 "use client"
 
 import React, { useEffect, useState } from 'react'

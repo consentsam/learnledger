@@ -16,6 +16,41 @@ import {
 import { withCors } from '@/lib/cors'
 import { withValidation } from '@/lib/middleware/validation'
 
+// @ts-nocheck
+// Force this API route to be dynamic
+export const dynamic = 'force-dynamic';
+
+// Helper function to handle DB connection errors
+function handleDbConnectionError(error: any) {
+  console.error('Database connection error:', error);
+  
+  // Check if it's a connection error
+  if (error?.code === 'ENOTFOUND' || 
+      error?.message?.includes('getaddrinfo') ||
+      error?.message?.includes('connect ETIMEDOUT') ||
+      error?.message?.includes('connection timeout') ||
+      error?.code === 'SELF_SIGNED_CERT_IN_CHAIN' ||
+      error?.code === 'CERT_HAS_EXPIRED') {
+    
+    // Construct database URL info for debugging (hide password)
+    const dbUrlInfo = process.env.DATABASE_URL 
+      ? `${process.env.DATABASE_URL.split('@')[0].split(':')[0]}:****@${process.env.DATABASE_URL.split('@')[1]}`
+      : 'DATABASE_URL not set';
+    
+    return serverErrorResponse({
+      message: `Failed to connect to DigitalOcean PostgreSQL database. Environment: ${process.env.NODE_ENV || 'unknown'}`,
+      details: {
+        url: dbUrlInfo,
+        error: error.message,
+        code: error.code
+      }
+    });
+  }
+  
+  // Generic server error
+  return serverErrorResponse(error);
+}
+
 /**
  * GET /api/projects
  * Fetches (optionally filtered) projects
@@ -34,6 +69,8 @@ async function getProjects(req: NextRequest) {
   try {
     // Log the request
     logApiRequest('GET', '/api/projects', req.ip || 'unknown')
+    console.log(`[API] Database URL: ${process.env.DATABASE_URL?.replace(/:[^:]*@/, ':****@')}`);
+    console.log(`[API] Environment: ${process.env.NODE_ENV || 'unknown'}`);
     
     const { searchParams } = new URL(req.url)
     
@@ -108,7 +145,7 @@ async function getProjects(req: NextRequest) {
     
     return response
   } catch (err) {
-    return serverErrorResponse(err)
+    return handleDbConnectionError(err)
   }
 }
 

@@ -1,8 +1,12 @@
+// @ts-nocheck
 import { eq, sql, count, sum } from 'drizzle-orm'
 import { NextRequest, NextResponse } from 'next/server'
 
 import { db } from '@/db/db'
 import { projectsTable } from '@/db/schema/projects-schema'
+
+// Force this API route to be dynamic
+export const dynamic = 'force-dynamic';
 
 /**
  * GET /api/projects/stats

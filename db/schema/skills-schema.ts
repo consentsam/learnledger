@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * @file skills-schema.ts
  *

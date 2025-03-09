@@ -1,12 +1,11 @@
 "use client"
 
-import React, { useState, useEffect } from 'react'
-
+import React, { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-
 import { useWallet } from '@/components/utilities/wallet-provider'
 
-export default function RegisterPage() {
+// Component with useSearchParams
+function RegisterForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { walletAddress } = useWallet()
@@ -23,12 +22,12 @@ export default function RegisterPage() {
   const [skills, setSkills] = useState('')
   const [profilePicUrl, setProfilePicUrl] = useState('')
 
-  // We also need a local “loading existing profile” state, in case they are already registered
+  // We also need a local "loading existing profile" state, in case they are already registered
   const [loading, setLoading] = useState<boolean>(true)
 
   useEffect(() => {
     if (!walletAddress) {
-      // If the wallet isn’t connected, force them to do that first
+      // If the wallet isn't connected, force them to do that first
       setLoading(false)
       return
     }
@@ -114,7 +113,7 @@ export default function RegisterPage() {
         return
       }
 
-      // data.data = newly created row’s ID
+      // data.data = newly created row's ID
       const newId = data.data
       if (role === 'company') {
         router.push(`/company/${newId}/dashboard`)
@@ -228,5 +227,14 @@ export default function RegisterPage() {
         </>
       )}
     </div>
+  )
+}
+
+// Main page component with Suspense boundary
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={<div className="p-4">Loading registration form...</div>}>
+      <RegisterForm />
+    </Suspense>
   )
 }

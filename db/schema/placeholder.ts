@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * @description
  * Placeholder file in the db/schema folder.

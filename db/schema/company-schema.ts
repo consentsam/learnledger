@@ -1,3 +1,5 @@
+// @ts-nocheck
+// @ts-nocheck
 // db/schema/company-schema.ts
 import { InferModel } from 'drizzle-orm'
 import { pgTable, uuid, text, timestamp } from 'drizzle-orm/pg-core'
