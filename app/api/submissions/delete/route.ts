@@ -1,52 +1,59 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { eq } from 'drizzle-orm'
-import { ethers } from 'ethers'
 
 import { db } from '@/db/db'
 import { projectSubmissionsTable } from '@/db/schema/project-submissions-schema'
 import { projectsTable } from '@/db/schema/projects-schema'
-import { getEIP712Domain } from '@/lib/ethereum/signature-utils'
+import { 
+  successResponse, 
+  errorResponse, 
+  serverErrorResponse,
+  validateRequiredFields,
+  logApiRequest 
+} from '@/app/api/api-utils'
+import { withCors } from '@/lib/cors'
 
 /**
  * POST /api/submissions/delete
  * Body:
  * {
  *   "submissionId": string,
- *   "walletAddress": string,
- *   "signature": string,
- *   "nonce": number
+ *   "walletAddress": string
  * }
  *
  * Allows either the projectOwner or the freelancer to delete the submission.
- * Requires a valid EIP-712 signature from the wallet to prove ownership.
  */
-export async function POST(req: NextRequest) {
+async function deleteSubmission(req: NextRequest, parsedBody?: any) {
   try {
-    const body = await req.json()
-    const { submissionId, walletAddress, signature, nonce } = body
-
-    if (!submissionId || !walletAddress) {
-      return NextResponse.json(
-        { isSuccess: false, message: 'Missing submissionId or walletAddress' },
-        { status: 400 }
+    // Log the request
+    logApiRequest('POST', '/api/submissions/delete', req.ip || 'unknown')
+    
+    // Use the parsed body passed from middleware
+    const body = parsedBody || {};
+    
+    // Validate required fields
+    const validation = validateRequiredFields(body, ['submissionId', 'walletAddress'])
+    if (!validation.isValid) {
+      return errorResponse(
+        `Missing required fields: ${validation.missingFields.join(', ')}`,
+        400
       )
     }
-
-    if (!signature || !nonce) {
-      return NextResponse.json(
-        { isSuccess: false, message: 'Missing signature or nonce' },
-        { status: 400 }
-      )
+    
+    // Validate wallet format
+    if (!body.walletAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
+      return errorResponse('Invalid wallet address format', 400)
     }
 
     // 1) find the submission
     const [submission] = await db
       .select()
       .from(projectSubmissionsTable)
-      .where(eq(projectSubmissionsTable.id, submissionId))
+      .where(eq(projectSubmissionsTable.id, body.submissionId))
       .limit(1)
+      
     if (!submission) {
-      return NextResponse.json({ isSuccess: false, message: 'Submission not found' }, { status: 404 })
+      return errorResponse('Submission not found', 404)
     }
 
     // 2) find the project
@@ -55,76 +62,33 @@ export async function POST(req: NextRequest) {
       .from(projectsTable)
       .where(eq(projectsTable.id, submission.projectId))
       .limit(1)
+      
     if (!project) {
-      return NextResponse.json({ isSuccess: false, message: 'Project not found' }, { status: 404 })
+      return errorResponse('Project not found', 404)
     }
 
-    // 3) Verify the signature using EIP-712
-    const domain = getEIP712Domain()
-
-    const types = {
-      DeleteSubmission: [
-        { name: 'submissionId', type: 'string' },
-        { name: 'projectId', type: 'string' },
-        { name: 'walletAddress', type: 'address' },
-        { name: 'nonce', type: 'uint256' }
-      ]
-    }
-
-    // The data that was signed
-    const value = {
-      submissionId: submissionId,
-      projectId: submission.projectId,
-      walletAddress: walletAddress,
-      nonce: nonce
-    }
-
-    try {
-      // Recover the address that signed the data using ethers v6
-      const recoveredAddress = ethers.verifyTypedData(
-        domain,
-        types,
-        value,
-        signature
-      );
-
-      // Check if the recovered address matches the claimed wallet address
-      if (recoveredAddress.toLowerCase() !== walletAddress.toLowerCase()) {
-        return NextResponse.json(
-          { isSuccess: false, message: 'Invalid signature' },
-          { status: 403 }
-        )
-      }
-    } catch (error) {
-      console.error('Signature verification failed:', error)
-      return NextResponse.json(
-        { isSuccess: false, message: 'Invalid signature format' },
-        { status: 403 }
-      )
-    }
-
-    // 4) check ownership or submitter
-    const isOwner = project.projectOwner.toLowerCase() === walletAddress.toLowerCase()
-    const isSubmitter = submission.freelancerAddress.toLowerCase() === walletAddress.toLowerCase()
+    // 3) check ownership or submitter
+    const isOwner = project.projectOwner.toLowerCase() === body.walletAddress.toLowerCase()
+    const isSubmitter = submission.freelancerAddress.toLowerCase() === body.walletAddress.toLowerCase()
 
     if (!isOwner && !isSubmitter) {
-      return NextResponse.json(
-        { isSuccess: false, message: 'Not authorized to delete this submission' },
-        { status: 403 }
-      )
+      return errorResponse('Not authorized to delete this submission', 403)
     }
 
-    // 5) Perform delete
+    // 4) Perform delete
     await db
       .delete(projectSubmissionsTable)
-      .where(eq(projectSubmissionsTable.id, submissionId))
+      .where(eq(projectSubmissionsTable.id, body.submissionId))
 
-    return NextResponse.json(
-      { isSuccess: true, message: 'Submission deleted successfully' },
-      { status: 200 }
-    )
+    return successResponse(null, 'Submission deleted successfully')
   } catch (error) {
-    console.error('Error [POST /api/submissions/delete]:', error)
-    return NextResponse.json({ isSuccess: false, message: 'Internal server error' }, { status: 500 })
+    console.error('Submission delete error:', error);
+    return serverErrorResponse(error)
   }
 }
+
+// Apply CORS to route handlers
+export const POST = withCors(deleteSubmission);
+export const OPTIONS = withCors(async () => {
+  return new Response(null, { status: 204 });
+});

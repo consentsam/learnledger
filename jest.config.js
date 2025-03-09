@@ -1,23 +1,25 @@
-const { pathsToModuleNameMapper } = require('ts-jest');
-const { compilerOptions } = require('./tsconfig.json');
-
-/** @type {import('jest').Config} */
+/** @type {import('ts-jest').JestConfigWithTsJest} */
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
-  moduleNameMapper: pathsToModuleNameMapper(compilerOptions.paths, { prefix: '<rootDir>/' }),
-  setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
-  testMatch: ['<rootDir>/tests/**/*.test.ts'],
-  moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
+  testMatch: [
+    '**/tests/**/*.test.ts'
+  ],
   transform: {
     '^.+\\.tsx?$': ['ts-jest', {
-      tsconfig: 'tsconfig.json',
+      tsconfig: {
+        jsx: 'react',
+        esModuleInterop: true,
+      },
     }],
   },
-  globals: {
-    'ts-jest': {
-      tsconfig: 'tsconfig.json',
-    },
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/$1'
   },
-  testTimeout: 30000, // 30 seconds
+  setupFilesAfterEnv: [
+    '<rootDir>/tests/setupTests.js'
+  ],
+  verbose: true,
+  forceExit: true,
+  clearMocks: true,
 }; 

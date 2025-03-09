@@ -1,69 +1,65 @@
 // app/api/register/route.ts
-import { NextRequest, NextResponse } from 'next/server'
-import { ethers } from 'ethers'
+import { NextRequest } from 'next/server'
 import { registerUserProfileAction } from '@/actions/db/user-profile-actions'
-import { getEIP712Domain } from '@/lib/ethereum/signature-utils'
+import { 
+  successResponse, 
+  serverErrorResponse,
+  logApiRequest,
+  errorResponse
+} from '@/app/api/api-utils'
+import { withValidation, rules } from '@/lib/middleware/validation';
+import { withCors } from '@/lib/cors';
 
-export async function POST(req: NextRequest) {
+// Define the validation schema for the registration endpoint
+const registerValidationSchema = {
+  body: {
+    role: [
+      rules.required('role'),
+      rules.isValidRole('role'),
+    ],
+    walletAddress: [
+      rules.required('walletAddress'),
+      rules.isWalletAddress('walletAddress'),
+    ],
+    // Company-specific validations
+    companyName: [
+      rules.custom(
+        'companyName', 
+        (value: string | undefined, body: any) => {
+          // Only required if role is company
+          if (body?.role !== 'company') return true;
+          return value !== undefined && value !== '';
+        },
+        'Company name is required for company profiles'
+      ),
+    ],
+    // Freelancer-specific validations
+    freelancerName: [
+      rules.custom(
+        'freelancerName',
+        (value: string | undefined, body: any) => {
+          // Only required if role is freelancer
+          if (body?.role !== 'freelancer') return true;
+          return value !== undefined && value !== '';
+        },
+        'Freelancer name is required for freelancer profiles'
+      ),
+    ],
+  },
+};
+
+// The original handler without validation logic
+async function registerHandler(req: NextRequest, parsedBody?: any) {
   try {
-    const body = await req.json()
-    if (!body.walletAddress || !body.role) {
-      return NextResponse.json(
-        { isSuccess: false, message: 'Missing walletAddress or role' },
-        { status: 400 }
-      )
-    }
-
-    // Verify signature if provided
-    if (body.signature && body.nonce) {
-      const { walletAddress, role, signature, nonce } = body
-
-      // Define EIP-712 typed data
-      const domain = getEIP712Domain()
-      
-      const types = {
-        UserRegistration: [
-          { name: 'walletAddress', type: 'address' },
-          { name: 'role', type: 'string' },
-          { name: 'nonce', type: 'uint256' }
-        ]
-      }
-      
-      const value = {
-        walletAddress,
-        role,
-        nonce
-      }
-
-      try {
-        // Recover the signer's address from the signature
-        const recoveredAddress = ethers.verifyTypedData(
-          domain,
-          types,
-          value,
-          signature
-        )
-
-        // Verify the recovered address matches the claimed wallet address
-        if (recoveredAddress.toLowerCase() !== walletAddress.toLowerCase()) {
-          return NextResponse.json(
-            { isSuccess: false, message: 'Invalid signature' },
-            { status: 403 }
-          )
-        }
-      } catch (error) {
-        console.error('Signature verification failed:', error)
-        return NextResponse.json(
-          { isSuccess: false, message: 'Invalid signature format' },
-          { status: 403 }
-        )
-      }
-    } else {
-      // For backward compatibility, allow registration without signature during development
-      console.warn('Registration attempted without signature - this should be disallowed in production')
-    }
-
-    // This calls our updated user-profile-actions code
+    // Log the request
+    logApiRequest('POST', '/api/register', req.ip || 'unknown')
+    
+    // Use the parsed body from middleware
+    const body = parsedBody || {};
+    
+    // Role-specific validation is now handled by the middleware
+    
+    // Call the server action
     const result = await registerUserProfileAction({
       role: body.role,
       walletAddress: body.walletAddress,
@@ -75,23 +71,36 @@ export async function POST(req: NextRequest) {
       profilePicUrl: body.profilePicUrl,
     })
 
-    if (!result.isSuccess || !result.data) {
-      return NextResponse.json(
-        { isSuccess: false, message: result.message || 'Failed to register user profile' },
-        { status: 400 }
-      )
+    if (!result.isSuccess) {
+      // Map detailed error messages based on the failure reason
+      if (result.message?.includes('already exists')) {
+        return errorResponse(`${body.role === 'company' ? 'Company' : 'Freelancer'} profile with this wallet address already exists`, 400, {
+          walletAddress: ['This wallet address is already registered with a profile']
+        })
+      }
+      
+      if (result.message?.includes('Invalid wallet')) {
+        return errorResponse('Invalid wallet address format', 400, {
+          walletAddress: ['Wallet address must be a valid Ethereum address starting with 0x']
+        })
+      }
+
+      // If there's a DB error or other server-side issue
+      return serverErrorResponse(new Error(result.message || 'Registration failed'))
     }
 
-    // Return the new row's id so the client can redirect properly
-    return NextResponse.json(
-      { isSuccess: true, data: result.data.id },
-      { status: 200 }
-    )
+    return successResponse(result.data, 'Successfully registered profile')
   } catch (error) {
-    console.error('[POST /api/register] Error:', error)
-    return NextResponse.json(
-      { isSuccess: false, message: 'Internal server error' },
-      { status: 500 }
-    )
+    console.error('Register API error:', error)
+    return serverErrorResponse(error)
   }
 }
+
+// Apply CORS and validation middleware to the handler
+const handlerWithValidation = withValidation(registerHandler, registerValidationSchema);
+export const POST = withCors(handlerWithValidation);
+
+// Handle OPTIONS requests for CORS preflight
+export const OPTIONS = withCors(async (req) => {
+  return new Response(null, { status: 204 });
+});

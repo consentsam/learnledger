@@ -7,6 +7,7 @@ import { jwtDecode } from 'jwt-decode'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { useOpenCampusAuth } from './ocid-provider'
+import { useWallet } from './wallet-provider'
 
 // Debug helper
 const DEBUG = true;
@@ -28,6 +29,8 @@ export function NavBar() {
   
   // Track if we're in the redirect flow
   const [isInRedirectFlow, setIsInRedirectFlow] = useState(false)
+  
+  const { walletAddress, connect, disconnect, isConnecting } = useWallet()
   
   useEffect(() => {
     // Client-side only effect
@@ -210,14 +213,39 @@ export function NavBar() {
   }
 
   return (
-    <nav className="flex items-center justify-between px-4 py-2 bg-white shadow">
-      <Link href="/" className="font-bold text-lg">
-        ProjectLedger
-      </Link>
-
-      <div className="flex items-center gap-4">
-        <Link href="/projects">Projects</Link>
-        {renderOCIDInfo()}
+    <nav className="bg-gray-800 text-white p-4">
+      <div className="container mx-auto flex justify-between items-center">
+        <Link href="/" className="text-xl font-bold">
+          ProjectLedger
+        </Link>
+        
+        <div className="flex items-center space-x-4">
+          <Link href="/api-docs" className="hover:underline">
+            API Docs
+          </Link>
+          
+          {walletAddress ? (
+            <div className="flex items-center space-x-2">
+              <span className="text-sm text-gray-300">
+                {walletAddress.substring(0, 6)}...{walletAddress.substring(walletAddress.length - 4)}
+              </span>
+              <button
+                onClick={disconnect}
+                className="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700"
+              >
+                Disconnect
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={connect}
+              disabled={isConnecting}
+              className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
+            >
+              {isConnecting ? 'Connecting...' : 'Connect Wallet'}
+            </button>
+          )}
+        </div>
       </div>
     </nav>
   )

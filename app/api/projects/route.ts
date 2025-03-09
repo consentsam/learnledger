@@ -1,163 +1,198 @@
 // app/api/projects/route.ts
-import { NextRequest, NextResponse } from 'next/server'
-import { ethers } from 'ethers'
+import { NextRequest } from 'next/server'
 import { db } from '@/db/db'
 import { projectsTable } from '@/db/schema/projects-schema'
-import { eq, and, sql } from 'drizzle-orm'
+import { eq, and, sql, desc, asc } from 'drizzle-orm'
 import { SQL } from 'drizzle-orm/sql'
 
 import { createProjectAction } from '@/actions/db/projects-actions'
-import { getEIP712Domain } from '@/lib/ethereum/signature-utils'
+import { 
+  successResponse, 
+  errorResponse, 
+  serverErrorResponse,
+  logApiRequest,
+  validateRequiredFields 
+} from '@/app/api/api-utils'
+import { withCors } from '@/lib/cors'
+import { withValidation } from '@/lib/middleware/validation'
 
 /**
  * GET /api/projects
- * Fetches (optionally filtered) projects, e.g. ?status=open&skill=React&minPrize=100&maxPrize=1000
+ * Fetches (optionally filtered) projects
+ * Query params:
+ * - status: filter by project status (open, closed, etc.)
+ * - skill: filter by required skill
+ * - minPrize: minimum prize amount
+ * - maxPrize: maximum prize amount
+ * - owner: filter by project owner wallet
+ * - sort: sort field (created, prize, name) 
+ * - order: sort order (asc, desc)
+ * - limit: limit number of results (default 20, max 100)
+ * - offset: pagination offset
  */
-export async function GET(req: NextRequest) {
+async function getProjects(req: NextRequest) {
   try {
+    // Log the request
+    logApiRequest('GET', '/api/projects', req.ip || 'unknown')
+    
     const { searchParams } = new URL(req.url)
+    
+    // Query parameters
     const status = searchParams.get('status')
     const skill = searchParams.get('skill')
     const minPrize = searchParams.get('minPrize')
     const maxPrize = searchParams.get('maxPrize')
-
+    const owner = searchParams.get('owner')?.toLowerCase()
+    const sortBy = searchParams.get('sort') || 'created'
+    const sortOrder = searchParams.get('order') || 'desc'
+    const limitParam = searchParams.get('limit')
+    const offsetParam = searchParams.get('offset')
+    
+    // Parse and validate limit/offset
+    const limit = limitParam ? Math.min(parseInt(limitParam), 100) : 20
+    const offset = offsetParam ? parseInt(offsetParam) : 0
+    
+    // Build query conditions
     const conditions: SQL[] = []
 
     if (status) {
       conditions.push(eq(projectsTable.projectStatus, status))
     }
+    
     if (minPrize) {
       conditions.push(sql`${projectsTable.prizeAmount} >= ${minPrize}`)
     }
+    
     if (maxPrize) {
       conditions.push(sql`${projectsTable.prizeAmount} <= ${maxPrize}`)
     }
+    
     if (skill) {
-      // e.g. where required_skills ilike '%React%'
       conditions.push(sql`${projectsTable.requiredSkills} ILIKE ${'%' + skill + '%'}`)
     }
-
-    const rows = await (conditions.length === 0
-      ? db.select().from(projectsTable)
-      : db.select().from(projectsTable).where(conditions.length === 1
-          ? conditions[0]
-          : and(...conditions)))
-
-    return NextResponse.json({ isSuccess: true, data: rows })
+    
+    if (owner) {
+      conditions.push(eq(projectsTable.projectOwner, owner))
+    }
+    
+    // Build sorting
+    let orderBy
+    switch (sortBy) {
+      case 'prize':
+        orderBy = sortOrder === 'asc' ? asc(projectsTable.prizeAmount) : desc(projectsTable.prizeAmount)
+        break
+      case 'name':
+        orderBy = sortOrder === 'asc' ? asc(projectsTable.projectName) : desc(projectsTable.projectName)
+        break
+      case 'created':
+      default:
+        orderBy = sortOrder === 'asc' ? asc(projectsTable.createdAt) : desc(projectsTable.createdAt)
+    }
+    
+    // Execute query with all parameters
+    const query = db.select().from(projectsTable)
+    
+    // Add conditions if any
+    if (conditions.length > 0) {
+      query.where(conditions.length === 1 ? conditions[0] : and(...conditions))
+    }
+    
+    // Add sorting, limit and offset
+    const rows = await query.orderBy(orderBy).limit(limit).offset(offset)
+    
+    // Create response with cache headers
+    const response = successResponse(rows, undefined, 200)
+    
+    // Add cache control headers (cache for 1 minute, public)
+    response.headers.set('Cache-Control', 'public, max-age=60')
+    
+    return response
   } catch (err) {
-    console.error('GET /api/projects error:', err)
-    return NextResponse.json(
-      { isSuccess: false, message: 'Internal server error' },
-      { status: 500 }
-    )
+    return serverErrorResponse(err)
   }
 }
 
 /**
  * POST /api/projects
- * Creates a new project. Body should contain:
+ * JSON body:
  * {
- *   walletAddress: string
- *   projectName: string
- *   projectDescription?: string
- *   projectRepo?: string
- *   prizeAmount?: number
- *   requiredSkills?: string
- *   completionSkills?: string
- *   signature?: string // EIP-712 signature
- *   nonce?: number // Timestamp nonce
+ *   "projectName": string,
+ *   "projectDescription": string,
+ *   "projectLink": string,
+ *   "prizeAmount": number,
+ *   "projectOwner": string,
+ *   "requiredSkills": string[]
  * }
  */
-export async function POST(req: NextRequest) {
+async function createProject(req: NextRequest, parsedBody?: any) {
   try {
-    const body = await req.json()
-    const { 
-      walletAddress, 
-      projectName, 
-      projectDescription, 
-      prizeAmount, 
-      signature, 
-      nonce 
-    } = body
-
-    // Basic validation
-    if (!walletAddress || !projectName) {
-      return NextResponse.json(
-        { isSuccess: false, message: 'Missing required fields: walletAddress or projectName' },
-        { status: 400 }
+    // Log the request
+    logApiRequest('POST', '/api/projects', req.ip || 'unknown')
+    
+    // Use the parsed body passed from middleware
+    const body = parsedBody || {};
+    
+    // Validate required fields
+    const validation = validateRequiredFields(body, ['projectName', 'projectOwner'])
+    if (!validation.isValid) {
+      return errorResponse(
+        `Missing required fields: ${validation.missingFields.join(', ')}`,
+        400,
+        validation.missingFields.reduce((acc, field) => {
+          acc[field] = [`${field.charAt(0).toUpperCase() + field.slice(1).replace('project', '').replace('Project', '')} is required`];
+          return acc;
+        }, {} as Record<string, string[]>)
       )
     }
-
-    // Verify signature if provided
-    if (signature && nonce) {
-      // Define EIP-712 typed data
-      const domain = getEIP712Domain()
-      
-      const types = {
-        ProjectCreation: [
-          { name: 'walletAddress', type: 'address' },
-          { name: 'projectName', type: 'string' },
-          { name: 'projectDescription', type: 'string' },
-          { name: 'prizeAmount', type: 'string' },
-          { name: 'nonce', type: 'uint256' }
-        ]
-      }
-      
-      const value = {
-        walletAddress,
-        projectName,
-        projectDescription: projectDescription || '',
-        prizeAmount: (prizeAmount || 0).toString(),
-        nonce
-      }
-
-      try {
-        // Recover the signer's address from the signature
-        const recoveredAddress = ethers.verifyTypedData(
-          domain,
-          types,
-          value,
-          signature
-        )
-
-        // Verify the recovered address matches the claimed wallet address
-        if (recoveredAddress.toLowerCase() !== walletAddress.toLowerCase()) {
-          return NextResponse.json(
-            { isSuccess: false, message: 'Invalid signature' },
-            { status: 403 }
-          )
-        }
-      } catch (error) {
-        console.error('Signature verification failed:', error)
-        return NextResponse.json(
-          { isSuccess: false, message: 'Invalid signature format' },
-          { status: 403 }
-        )
-      }
-    } else {
-      // For backward compatibility, allow creation without signature during development
-      console.warn('Project creation attempted without signature - this should be disallowed in production')
+    
+    // Validate wallet address format
+    if (!body.projectOwner.startsWith('0x') || body.projectOwner.length !== 42) {
+      return errorResponse(
+        'Invalid wallet address format', 
+        400,
+        { projectOwner: ['Wallet address must be a valid Ethereum address starting with 0x'] }
+      )
     }
-
-    // Instead of direct DB insert, call your server action for consistency
-    const result = await createProjectAction(body)
+    
+    // Format the skills if they are provided as an array
+    let requiredSkills = body.requiredSkills
+    if (Array.isArray(requiredSkills)) {
+      requiredSkills = requiredSkills.join(', ')
+    }
+    
+    // Call the server action to create the project
+    const result = await createProjectAction({
+      projectName: body.projectName,
+      projectDescription: body.projectDescription,
+      projectRepo: body.projectLink || body.projectRepo,
+      prizeAmount: body.prizeAmount ? Number(body.prizeAmount) : undefined,
+      walletAddress: body.projectOwner,
+      requiredSkills,
+      completionSkills: body.completionSkills,
+    })
 
     if (!result.isSuccess) {
-      return NextResponse.json(
-        { isSuccess: false, message: result.message },
-        { status: 400 }
-      )
+      // Map detailed error messages based on the failure reason
+      if (result.message?.includes('owner does not exist')) {
+        return errorResponse('Project owner does not have a registered profile', 400, {
+          projectOwner: ['This wallet address is not registered with a company profile']
+        })
+      }
+      
+      // If there's a DB error or other server-side issue
+      return serverErrorResponse(new Error(result.message || 'Failed to create project'))
     }
 
-    return NextResponse.json(
-      { isSuccess: true, data: result.data },
-      { status: 200 }
-    )
-  } catch (err) {
-    console.error('POST /api/projects error:', err)
-    return NextResponse.json(
-      { isSuccess: false, message: 'Internal server error' },
-      { status: 500 }
-    )
+    return successResponse(result.data, 'Project created successfully')
+  } catch (error) {
+    console.error('Project creation error:', error)
+    return serverErrorResponse(error)
   }
 }
+
+// Apply CORS to route handlers
+export const GET = withCors(getProjects);
+export const POST = withCors(createProject);
+export const OPTIONS = withCors(async () => {
+  return new Response(null, { status: 204 });
+});
