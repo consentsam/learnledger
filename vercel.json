@@ -35,7 +35,8 @@
         "NEXT_PUBLIC_API_URL": "${VERCEL_URL}/api",
         "SKIP_BUILD_STATIC_GENERATION": "true",
         "USE_MOCK_DB": "false",
-        "NODE_ENV": "production"
+        "NODE_ENV": "production",
+        "DISABLE_SSL_VALIDATION": "true"
     },
     "functions": {
         "app/api/**/*": {

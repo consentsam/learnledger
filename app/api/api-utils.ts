@@ -6,6 +6,7 @@ export interface ApiResponse<T = any> {
   message?: string;
   data?: T;
   errors?: Record<string, string[]>;
+  debugInfo?: any; // Add debug info field
 }
 
 // Success response helper
@@ -32,9 +33,22 @@ export function errorResponse(message: string, status = 400, errors?: Record<str
   );
 }
 
-// Internal server error helper
-export function serverErrorResponse(error: any) {
-  const errorDetails = {
+// Custom debug info interface
+export interface ErrorDetails {
+  message?: string;
+  code?: string;
+  name?: string;
+  stack?: string;
+  dbURL?: string;
+  env?: string;
+  vercelEnv?: string;
+  [key: string]: any; // Allow additional properties
+}
+
+// Internal server error helper (with optional custom debug info)
+export function serverErrorResponse(error: any, customDetails?: ErrorDetails) {
+  // Default error details
+  const defaultDetails = {
     message: error?.message || 'Unknown error',
     code: error?.code,
     name: error?.name,
@@ -46,12 +60,15 @@ export function serverErrorResponse(error: any) {
     vercelEnv: process.env.VERCEL_ENV
   };
   
+  // Merge default and custom details
+  const errorDetails = customDetails ? { ...defaultDetails, ...customDetails } : defaultDetails;
+  
   console.error('[API Error]:', JSON.stringify(errorDetails, null, 2));
   
   return NextResponse.json(
     { 
       isSuccess: false, 
-      message: 'Internal server error',
+      message: customDetails?.message || 'Internal server error',
       // Always include debug info for now until we fix the issue
       debugInfo: errorDetails
     } as ApiResponse,

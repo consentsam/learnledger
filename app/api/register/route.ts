@@ -5,7 +5,8 @@ import {
   successResponse, 
   serverErrorResponse,
   logApiRequest,
-  errorResponse
+  errorResponse,
+  ErrorDetails
 } from '@/app/api/api-utils'
 import { withValidation, rules } from '@/lib/middleware/validation';
 import { withCors } from '@/lib/cors';
@@ -55,15 +56,24 @@ const registerValidationSchema = {
 // The original handler without validation logic
 async function registerHandler(req: NextRequest, parsedBody?: any) {
   try {
+    // Log environment information for debugging
+    console.log(`[Register API] Environment: ${process.env.NODE_ENV || 'unknown'}`);
+    console.log(`[Register API] DISABLE_SSL_VALIDATION: ${process.env.DISABLE_SSL_VALIDATION || 'not set'}`);
+    console.log(`[Register API] NODE_TLS_REJECT_UNAUTHORIZED: ${process.env.NODE_TLS_REJECT_UNAUTHORIZED || 'not set'}`);
+    console.log(`[Register API] Database URL: ${process.env.DATABASE_URL?.replace(/:[^:]*@/, ':****@')}`);
+    
     // Log the request
     logApiRequest('POST', '/api/register', req.ip || 'unknown')
     
     // Use the parsed body from middleware
     const body = parsedBody || {};
     
+    console.log(`[Register API] Registration attempt for wallet: ${body.walletAddress?.substr(0,10)}... with role: ${body.role}`);
+    
     // Role-specific validation is now handled by the middleware
     
     // Call the server action
+    console.log(`[Register API] Calling registerUserProfileAction`);
     const result = await registerUserProfileAction({
       role: body.role,
       walletAddress: body.walletAddress,
@@ -75,28 +85,64 @@ async function registerHandler(req: NextRequest, parsedBody?: any) {
       profilePicUrl: body.profilePicUrl,
     })
 
+    console.log(`[Register API] registerUserProfileAction result:`, { 
+      isSuccess: result.isSuccess, 
+      message: result.message,
+      hasData: !!result.data,
+      hasError: !!result.error 
+    });
+
     if (!result.isSuccess) {
       // Map detailed error messages based on the failure reason
       if (result.message?.includes('already exists')) {
+        console.log(`[Register API] Duplicate wallet address error`);
         return errorResponse(`${body.role === 'company' ? 'Company' : 'Freelancer'} profile with this wallet address already exists`, 400, {
           walletAddress: ['This wallet address is already registered with a profile']
         })
       }
       
       if (result.message?.includes('Invalid wallet')) {
+        console.log(`[Register API] Invalid wallet format error`);
         return errorResponse('Invalid wallet address format', 400, {
           walletAddress: ['Wallet address must be a valid Ethereum address starting with 0x']
         })
       }
 
       // If there's a DB error or other server-side issue
-      return serverErrorResponse(new Error(result.message || 'Registration failed'))
+      console.error(`[Register API] Server error during registration:`, result.error || result.message);
+      
+      // Create error details object
+      const errorDetails: ErrorDetails = {
+        message: result.message || 'Registration failed',
+        dbURL: process.env.DATABASE_URL?.replace(/:[^:]*@/, ':****@'),
+        env: process.env.NODE_ENV || 'unknown',
+        vercelEnv: process.env.VERCEL_ENV || 'unknown'
+      };
+      
+      // Add any additional error details if available
+      if (result.error) {
+        errorDetails.error = typeof result.error === 'object' 
+          ? result.error 
+          : { message: String(result.error) };
+      }
+      
+      return serverErrorResponse(new Error(result.message || 'Registration failed'), errorDetails);
     }
 
+    console.log(`[Register API] Registration successful`);
     return successResponse(result.data, 'Successfully registered profile')
-  } catch (error) {
-    console.error('Register API error:', error)
-    return serverErrorResponse(error)
+  } catch (error: any) {
+    console.error('[Register API] Unhandled error:', error)
+    
+    // Create error details object
+    const errorDetails: ErrorDetails = {
+      message: error?.message || 'Registration failed due to an unexpected error',
+      dbURL: process.env.DATABASE_URL?.replace(/:[^:]*@/, ':****@'),
+      env: process.env.NODE_ENV || 'unknown',
+      vercelEnv: process.env.VERCEL_ENV || 'unknown'
+    };
+    
+    return serverErrorResponse(error, errorDetails);
   }
 }
 
