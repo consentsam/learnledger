@@ -11,6 +11,7 @@ import {
   logApiRequest 
 } from '@/app/api/api-utils'
 import { withCors } from '@/lib/cors'
+import { withValidation, rules } from '@/lib/middleware/validation' // Import validation middleware
 
 // We import the DB and tables to do manual updates and deletes:
 import { db } from '@/db/db'
@@ -61,6 +62,20 @@ async function getUserProfile(req: NextRequest) {
     return serverErrorResponse(error);
   }
 }
+
+// Define the validation schema for the updateUserProfile endpoint
+const updateUserProfileValidationSchema = {
+  body: {
+    role: [
+      rules.required('role'),
+      rules.isValidRole('role'),
+    ],
+    walletAddress: [
+      rules.required('walletAddress'),
+      rules.isWalletAddress('walletAddress'),
+    ],
+  },
+};
 
 /**
  * PUT /api/userProfile
@@ -266,10 +281,28 @@ async function deleteUserProfile(req: NextRequest, parsedBody?: any) {
   }
 }
 
+// Define validation schema for DELETE endpoint
+const deleteUserProfileValidationSchema = {
+  body: {
+    role: [
+      rules.required('role'),
+      rules.isValidRole('role'),
+    ],
+    walletAddress: [
+      rules.required('walletAddress'),
+      rules.isWalletAddress('walletAddress'),
+    ],
+  },
+};
+
+// Apply validation middleware to route handlers
+const updateUserProfileWithValidation = withValidation(updateUserProfile, updateUserProfileValidationSchema);
+const deleteUserProfileWithValidation = withValidation(deleteUserProfile, deleteUserProfileValidationSchema);
+
 // Add CORS support to each route handler
 export const GET = withCors(getUserProfile);
-export const PUT = withCors(updateUserProfile);
-export const DELETE = withCors(deleteUserProfile);
+export const PUT = withCors(updateUserProfileWithValidation); // Apply validation middleware to PUT
+export const DELETE = withCors(deleteUserProfileWithValidation); // Apply validation middleware to DELETE
 export const OPTIONS = withCors(async () => NextResponse.json({}, { status: 204 }));
 
 // @ts-nocheck

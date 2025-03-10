@@ -95,17 +95,27 @@ async function validateApiDocs() {
  * @param {object} operation - Operation details from OpenAPI spec
  */
 async function testEndpoint(path, method, operation) {
-  console.log(`Testing ${method.toUpperCase()} ${path}...`);
-  
-  // Construct test request
-  const url = `${API_BASE_URL}${path}`;
-  const requestBody = getRequestBody(operation);
-  const params = getQueryParams(path, operation);
-  const curlCommand = buildCurlCommand(method, url, requestBody, params);
-  
-  console.log(`Executing: ${curlCommand}`);
-  
   try {
+    console.log(`Testing ${method.toUpperCase()} ${path}...`);
+    
+    // Generate request body if this is a POST or PUT request
+    const body = (method === 'post' || method === 'put') ? getRequestBody(operation) : null;
+    
+    // Generate query parameters
+    const params = getQueryParams(path, operation);
+    
+    // Special handling for endpoints that require specific parameters
+    if (path === '/userProfile' && method === 'get') {
+      params.wallet = '0x742d35Cc6634C0532925a3b844Bc454e4438f44e';
+      params.role = 'company';
+    }
+    
+    // Build and execute the curl command
+    const url = `${API_BASE_URL}${path}`;
+    const curlCommand = buildCurlCommand(method, url, body, params);
+    
+    console.log(`Executing: ${curlCommand}`);
+    
     // Execute curl command and capture response
     const response = execSync(curlCommand).toString();
     const actualResponse = JSON.parse(response);

@@ -20,59 +20,66 @@ async function validateAndUpdateApiDocs() {
   console.log('This tool will help ensure that API documentation matches actual API responses.');
   console.log();
   
-  const options = [
-    { id: 1, name: 'Validate API endpoints against documentation', script: 'validate-api-docs.js' },
-    { id: 2, name: 'Test error responses against documentation', script: 'validate-error-responses.js' },
-    { id: 3, name: 'Update API documentation based on actual responses', script: 'update-api-docs.js' },
-    { id: 4, name: 'Run all steps (validate, test errors, update)', script: null },
-    { id: 5, name: 'Exit', script: null }
+  // Check if the required scripts exist
+  const requiredScripts = [
+    'validate-api-docs.js',
+    'validate-error-responses.js',
+    'update-api-docs.js',
+    'cleanup-openapi.js'
   ];
   
-  // Make sure the scripts directory exists
-  const scriptsDir = __dirname;
-  
-  // Check if all required scripts exist
-  const requiredScripts = ['validate-api-docs.js', 'validate-error-responses.js', 'update-api-docs.js'];
-  const missingScripts = requiredScripts.filter(script => !fs.existsSync(path.join(scriptsDir, script)));
-  
-  if (missingScripts.length > 0) {
-    console.error('Error: The following required scripts are missing:');
-    missingScripts.forEach(script => console.error(`- ${script}`));
-    process.exit(1);
+  for (const script of requiredScripts) {
+    const scriptPath = path.join(__dirname, script);
+    if (!fs.existsSync(scriptPath)) {
+      console.error(`Error: Required script not found: ${scriptPath}`);
+      console.error('Please make sure all required scripts are in the current directory.');
+      rl.close();
+      return;
+    }
   }
+  
+  // Define menu options
+  const options = [
+    { value: 1, label: 'Validate API endpoints against documentation' },
+    { value: 2, label: 'Test error responses against documentation' },
+    { value: 3, label: 'Update API documentation based on actual responses' },
+    { value: 4, label: 'Clean up duplicate OpenAPI files' },
+    { value: 5, label: 'Run all steps (validate, test errors, update)' },
+    { value: 6, label: 'Exit' }
+  ];
   
   // Display menu
-  console.log('Available options:');
-  options.forEach(option => console.log(`${option.id}. ${option.name}`));
-  console.log();
+  console.log('Please select an option:');
+  options.forEach(option => {
+    console.log(`${option.value}. ${option.label}`);
+  });
   
-  // Get user selection
-  const selection = await promptForNumber('Select an option: ', 1, options.length);
-  const selectedOption = options.find(option => option.id === selection);
+  const choice = await promptForNumber('Enter your choice: ', 1, options.length);
   
-  if (selectedOption.id === 5) {
-    console.log('Exiting...');
-    rl.close();
-    return;
+  switch (choice) {
+    case 1:
+      await runScript('validate-api-docs.js');
+      break;
+    case 2:
+      await runScript('validate-error-responses.js');
+      break;
+    case 3:
+      await runScript('update-api-docs.js');
+      break;
+    case 4:
+      await runScript('cleanup-openapi.js');
+      break;
+    case 5:
+      console.log('Running all steps...');
+      await runScript('validate-api-docs.js');
+      await runScript('validate-error-responses.js');
+      await runScript('update-api-docs.js');
+      break;
+    case 6:
+      console.log('Exiting...');
+      break;
   }
   
-  if (selectedOption.id === 4) {
-    // Run all steps
-    console.log('Running all steps...');
-    await runScript(path.join(scriptsDir, 'validate-api-docs.js'));
-    await runScript(path.join(scriptsDir, 'validate-error-responses.js'));
-    
-    // Ask before updating
-    const shouldUpdate = await promptYesNo('Do you want to update the API documentation based on the validation results? (y/n): ');
-    if (shouldUpdate) {
-      await runScript(path.join(scriptsDir, 'update-api-docs.js'));
-    }
-  } else if (selectedOption.script) {
-    // Run single script
-    await runScript(path.join(scriptsDir, selectedOption.script));
-  }
-  
-  console.log('Done.');
   rl.close();
 }
 
@@ -80,9 +87,10 @@ async function validateAndUpdateApiDocs() {
  * Run a Node.js script
  */
 async function runScript(scriptPath) {
+  const fullPath = path.join(__dirname, scriptPath);
   console.log(`Running ${path.basename(scriptPath)}...`);
   try {
-    execSync(`node ${scriptPath}`, { stdio: 'inherit' });
+    execSync(`node ${fullPath}`, { stdio: 'inherit' });
     return true;
   } catch (error) {
     console.error(`Error running ${path.basename(scriptPath)}:`, error.message);

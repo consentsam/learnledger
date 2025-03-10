@@ -201,6 +201,8 @@ export async function getUserProfile() {
 import { apiRequest } from './api';
 import { getCurrentWalletAddress } from './auth';
 
+// ⚠️ Known Issue: The PUT /userProfile endpoint has a body parsing issue
+// Use this workaround function that tries multiple strategies
 export async function updateUserProfile(profileData) {
   const walletAddress = getCurrentWalletAddress();
   
@@ -208,17 +210,47 @@ export async function updateUserProfile(profileData) {
     throw new Error('Please connect your wallet first');
   }
   
-  return apiRequest('/userProfile', {
-    method: 'PUT',
-    body: JSON.stringify({
-      walletAddress,
-      ...profileData
-    }),
-  });
+  // Combine wallet address with profile data
+  const userData = {
+    walletAddress,
+    ...profileData
+  };
+  
+  // Try multiple approaches (see full implementation in docs/api-workarounds.md)
+  try {
+    // Approach 1: Standard PUT request
+    const response = await apiRequest('/userProfile', {
+      method: 'PUT',
+      body: JSON.stringify(userData),
+    });
+    
+    if (response.isSuccess) {
+      return response;
+    }
+    
+    // Approach 2: PUT with query parameters for essential fields
+    const { role, ...updateData } = userData;
+    const queryParams = `?walletAddress=${encodeURIComponent(walletAddress)}&role=${encodeURIComponent(role || 'company')}`;
+    
+    const queryResponse = await apiRequest(`/userProfile${queryParams}`, {
+      method: 'PUT',
+      body: JSON.stringify(userData),
+    });
+    
+    if (queryResponse.isSuccess) {
+      return queryResponse;
+    }
+    
+    throw new Error('Failed to update profile after multiple attempts');
+  } catch (error) {
+    console.error('Profile update error:', error);
+    throw error;
+  }
 }
 
 // Example usage:
 updateUserProfile({
+  role: 'company', // Make sure to include role
   companyName: 'Updated Company Name',
   companyWebsite: 'https://updated-site.com',
 })

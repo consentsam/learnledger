@@ -1,6 +1,6 @@
 # API Documentation Validation Report
 
-Generated on: 3/10/2025, 2:57:47 PM
+Generated on: 3/10/2025, 3:40:01 PM
 
 ## POST /register
 
@@ -10,16 +10,21 @@ Operation ID: `registerUser`
 
 ❌ **Discrepancy Found**
 
-Expected keys missing from actual response: data
+Expected keys missing from actual response: data, errors
 Extra keys in actual response not in expected response: debugInfo
 
 
 #### Expected Response
 ```json
 {
-  "isSuccess": true,
-  "message": "Successfully registered profile",
-  "data": null
+  "isSuccess": false,
+  "message": "Freelancer profile with this wallet address already exists",
+  "data": null,
+  "errors": {
+    "walletAddress": [
+      "This wallet address is already registered with a profile"
+    ]
+  }
 }
 ```
 
@@ -66,25 +71,39 @@ Operation ID: `getUserProfile`
 
 ### Results
 
-❌ **Discrepancy Found**
+✅ **Success**
 
-Expected keys missing from actual response: data
-Extra keys in actual response not in expected response: message
-
+Response structure matches expected format
 
 #### Expected Response
 ```json
 {
   "isSuccess": true,
-  "data": null
+  "data": {
+    "id": "9f3d59a8-b899-4971-9ac2-04cb5aa30fcc",
+    "walletAddress": "0x742d35cc6634c0532925a3b844bc454e4438f44e",
+    "companyName": "Blockchain Innovations Inc.",
+    "shortDescription": "",
+    "logoUrl": "",
+    "createdAt": "2025-03-10T07:19:03.882Z",
+    "updatedAt": "2025-03-10T07:19:03.882Z"
+  }
 }
 ```
 
 #### Actual Response
 ```json
 {
-  "isSuccess": false,
-  "message": "Missing required query parameters: wallet and role"
+  "isSuccess": true,
+  "data": {
+    "id": "9f3d59a8-b899-4971-9ac2-04cb5aa30fcc",
+    "walletAddress": "0x742d35cc6634c0532925a3b844bc454e4438f44e",
+    "companyName": "Blockchain Innovations Inc.",
+    "shortDescription": "",
+    "logoUrl": "",
+    "createdAt": "2025-03-10T07:19:03.882Z",
+    "updatedAt": "2025-03-10T07:19:03.882Z"
+  }
 }
 ```
 
@@ -162,7 +181,7 @@ Response structure matches expected format
 ```json
 {
   "isSuccess": true,
-  "data": null
+  "data": []
 }
 ```
 
@@ -1085,12 +1104,12 @@ Extra keys in actual response not in expected response: openapi, info, servers, 
 {
   "openapi": "3.0.0",
   "info": {
-    "title": "LearnLedger API Documentation",
+    "title": "ProjectLedger API Documentation",
     "version": "1.0.0",
-    "description": "API documentation for the LearnLedger platform",
+    "description": "API documentation for the ProjectLedger platform",
     "contact": {
       "name": "API Support",
-      "email": "support@LearnLedger.com"
+      "email": "support@projectledger.com"
     }
   },
   "servers": [

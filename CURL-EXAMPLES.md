@@ -44,6 +44,8 @@ curl -X 'GET' \
 
 ### Update User Profile
 
+> ⚠️ **Known Issue**: The PUT /userProfile endpoint currently has an issue with request body parsing. Until this is fixed on the server, please use the client-side workaround described in the [API Workarounds](./docs/api-workarounds.md) document.
+
 ```bash
 curl -X 'PUT' \
   'https://learn-ledger-api.vercel.app/api/userProfile' \
