@@ -136,7 +136,7 @@ export async function registerUserProfileAction(params: {
           .insert(freelancerTable)
           .values({
             walletAddress: lowerWalletAddress,
-            name: params.freelancerName ?? '',
+            freelancerName: params.freelancerName ?? '',
             skills: params.skills ?? '',
             profilePicUrl: params.profilePicUrl ?? '',
           })

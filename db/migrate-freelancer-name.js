@@ -36,23 +36,11 @@ async function migrateFreelancerName() {
     `);
     
     if (!tableCheckResult.rows[0].exists) {
-      console.log("Freelancer table doesn't exist yet. Migration not needed.");
+      console.log("Freelancer table doesn't exist yet. No migration needed.");
       return;
     }
     
-    // Check if the freelancer table has a 'freelancer_name' column
-    const columnCheckResult = await client.query(`
-      SELECT EXISTS (
-        SELECT FROM information_schema.columns 
-        WHERE table_schema = 'public' 
-        AND table_name = 'freelancer' 
-        AND column_name = 'freelancer_name'
-      );
-    `);
-    
-    const hasFreelancerNameColumn = columnCheckResult.rows[0].exists;
-    
-    // Also check if it has a 'name' column
+    // Scenario 1: Check if the 'name' column exists
     const nameColumnCheckResult = await client.query(`
       SELECT EXISTS (
         SELECT FROM information_schema.columns 
@@ -64,75 +52,102 @@ async function migrateFreelancerName() {
     
     const hasNameColumn = nameColumnCheckResult.rows[0].exists;
     
-    if (hasFreelancerNameColumn && !hasNameColumn) {
-      // We need to rename 'freelancer_name' to 'name'
-      console.log("Renaming 'freelancer_name' column to 'name'...");
+    // Scenario 2: Check if the 'freelancer_name' column exists
+    const freelancerNameColumnCheckResult = await client.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.columns 
+        WHERE table_schema = 'public' 
+        AND table_name = 'freelancer' 
+        AND column_name = 'freelancer_name'
+      );
+    `);
+    
+    const hasFreelancerNameColumn = freelancerNameColumnCheckResult.rows[0].exists;
+    
+    // Perform the migration based on the current state
+    if (hasNameColumn && !hasFreelancerNameColumn) {
+      // Scenario 1: We have 'name' but no 'freelancer_name' - rename the column
+      console.log("Renaming 'name' column to 'freelancer_name'...");
       
-      // Start a transaction for the migration
+      // Start a transaction for safety
       await client.query('BEGIN');
       
       // Rename the column
       await client.query(`
-        ALTER TABLE freelancer 
-        RENAME COLUMN freelancer_name TO name;
+        ALTER TABLE freelancer
+        RENAME COLUMN name TO freelancer_name;
       `);
       
-      // Commit the transaction
+      // Commit the changes
       await client.query('COMMIT');
       
       console.log("Column renamed successfully.");
-    } else if (!hasFreelancerNameColumn && !hasNameColumn) {
-      // Neither column exists, we need to add 'name'
-      console.log("Adding 'name' column to freelancer table...");
+    } else if (hasFreelancerNameColumn && !hasNameColumn) {
+      // Scenario 2: We have 'freelancer_name' but no 'name' - no action needed
+      console.log("Column 'freelancer_name' already exists. No migration needed.");
+    } else if (hasNameColumn && hasFreelancerNameColumn) {
+      // Scenario 3: We have both columns - migrate data and drop 'name'
+      console.log("Both 'name' and 'freelancer_name' columns exist. Migrating data...");
       
-      // Start a transaction for the migration
+      // Start a transaction
       await client.query('BEGIN');
       
-      // Add the column
+      // Copy data from name to freelancer_name if freelancer_name is empty
       await client.query(`
-        ALTER TABLE freelancer 
-        ADD COLUMN name TEXT NOT NULL DEFAULT '';
+        UPDATE freelancer
+        SET freelancer_name = name
+        WHERE freelancer_name IS NULL OR freelancer_name = '';
       `);
       
-      // Commit the transaction
+      // Drop the 'name' column
+      await client.query(`
+        ALTER TABLE freelancer
+        DROP COLUMN name;
+      `);
+      
+      // Commit the changes
       await client.query('COMMIT');
       
-      console.log("Column added successfully.");
-    } else if (hasFreelancerNameColumn && hasNameColumn) {
-      // Both columns exist, we need to migrate data from freelancer_name to name and drop freelancer_name
-      console.log("Both 'freelancer_name' and 'name' columns exist. Migrating data...");
-      
-      // Start a transaction for the migration
-      await client.query('BEGIN');
-      
-      // Copy data from freelancer_name to name for any rows where name is empty
-      await client.query(`
-        UPDATE freelancer 
-        SET name = freelancer_name 
-        WHERE name = '' OR name IS NULL;
-      `);
-      
-      // Drop the freelancer_name column
-      await client.query(`
-        ALTER TABLE freelancer 
-        DROP COLUMN freelancer_name;
-      `);
-      
-      // Commit the transaction
-      await client.query('COMMIT');
-      
-      console.log("Data migrated and 'freelancer_name' column dropped successfully.");
+      console.log("Data migrated and 'name' column dropped successfully.");
     } else {
-      // Only 'name' column exists, no migration needed
-      console.log("Freelancer table already has 'name' column. No migration needed.");
+      // Scenario 4: Neither column exists - create 'freelancer_name'
+      console.log("Neither 'name' nor 'freelancer_name' column exists. Creating 'freelancer_name'...");
+      
+      // Start a transaction
+      await client.query('BEGIN');
+      
+      // Add the freelancer_name column
+      await client.query(`
+        ALTER TABLE freelancer
+        ADD COLUMN freelancer_name TEXT NOT NULL DEFAULT '';
+      `);
+      
+      // Commit the changes
+      await client.query('COMMIT');
+      
+      console.log("Column 'freelancer_name' created successfully.");
     }
+    
+    // Verify the schema after migration
+    const columnsAfterMigration = await client.query(`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+      AND table_name = 'freelancer'
+      ORDER BY ordinal_position;
+    `);
+    
+    console.log("Freelancer table columns after migration:");
+    columnsAfterMigration.rows.forEach(column => {
+      console.log(`- ${column.column_name}`);
+    });
     
     console.log('Migration completed successfully!');
     
   } catch (err) {
     console.error('Error during migration:', err);
     
-    // If we have a client and a transaction is in progress, try to roll it back
+    // If an error occurs during a transaction, roll it back
     if (client) {
       try {
         await client.query('ROLLBACK');
@@ -141,7 +156,6 @@ async function migrateFreelancerName() {
         console.error('Error rolling back transaction:', rollbackErr);
       }
     }
-    
   } finally {
     if (client) {
       client.release();
