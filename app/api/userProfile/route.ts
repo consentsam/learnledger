@@ -2,31 +2,33 @@ import { NextRequest, NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
 
 import { getUserProfileAction } from '@/actions/db/user-profile-actions'
-import {
-  successResponse,
-  errorResponse,
+import { 
+  successResponse, 
+  errorResponse, 
   serverErrorResponse,
   validateRequiredFields,
-  logApiRequest
+  logApiRequest 
 } from '@/app/api/api-utils'
 import { withCors } from '@/lib/cors'
-import { withValidation, rules } from '@/lib/middleware/validation' // Import validation middleware
+import { withValidation, rules } from '@/lib/middleware/validation'
 
 import { db } from '@/db/db'
 import { companyTable } from '@/db/schema/company-schema'
 import { freelancerTable } from '@/db/schema/freelancer-schema'
 
+// Force this API route to be dynamic
+export const dynamic = 'force-dynamic';
+
 /**
-  • GET /api/userProfile?wallet=0x…&role=company|freelancer
-*/
+ * GET /api/userProfile?wallet=0x...&role=company|freelancer
+ */
 async function getUserProfile(req: NextRequest) {
   try {
-    // Log the request
     logApiRequest('GET', '/api/userProfile', req.ip || 'unknown')
-
+    
     const { searchParams } = new URL(req.url)
     const wallet = searchParams.get('wallet')?.toLowerCase()
-    const role = searchParams.get('role') // "company" or "freelancer"
+    const role = searchParams.get('role')
 
     if (!wallet || !role) {
       return errorResponse(
@@ -35,12 +37,10 @@ async function getUserProfile(req: NextRequest) {
       )
     }
 
-    // Validate wallet format
     if (!wallet.match(/^0x[a-fA-F0-9]{40}$/)) {
       return errorResponse('Invalid wallet address format', 400)
     }
 
-    // Validate role enum
     if (role !== 'company' && role !== 'freelancer') {
       return errorResponse('Role must be either "company" or "freelancer"', 400)
     }
@@ -51,7 +51,6 @@ async function getUserProfile(req: NextRequest) {
     })
 
     const response = successResponse(result.data, undefined, 200);
-    // Add cache control headers (cache for 5 minutes)
     response.headers.set('Cache-Control', 'public, max-age=300');
     return response;
   } catch (error) {
@@ -59,7 +58,6 @@ async function getUserProfile(req: NextRequest) {
   }
 }
 
-// Define the validation schema for the updateUserProfile endpoint
 const updateUserProfileValidationSchema = {
   body: {
     role: [
@@ -73,20 +71,11 @@ const updateUserProfileValidationSchema = {
   },
 };
 
-/**
-  • PUT /api/userProfile
-  • Update a user profile.
-*/
 async function updateUserProfile(req: NextRequest, parsedBody?: any) {
   try {
-    // Log the request
     logApiRequest('PUT', '/api/userProfile', req.ip || 'unknown')
-
-    // Fix: parse JSON body if none is given
     const body = parsedBody || await req.json();
-    console.log('[updateUserProfile] Request body:', JSON.stringify(body));
 
-    // Validate required fields
     const validation = validateRequiredFields(body, ['role', 'walletAddress'])
     if (!validation.isValid) {
       return errorResponse(
@@ -94,20 +83,15 @@ async function updateUserProfile(req: NextRequest, parsedBody?: any) {
         400
       )
     }
-
-    // Validate role enum
     if (body.role !== 'company' && body.role !== 'freelancer') {
       return errorResponse('Role must be either "company" or "freelancer"', 400)
     }
-
-    // Validate wallet format
     if (!body.walletAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
       return errorResponse('Invalid wallet address format', 400)
     }
-
+    
     const lowerWallet = body.walletAddress.toLowerCase()
 
-    // We'll do a quick check if user already exists
     if (body.role === 'company') {
       const [existing] = await db
         .select()
@@ -118,7 +102,6 @@ async function updateUserProfile(req: NextRequest, parsedBody?: any) {
         return errorResponse('No matching company profile found', 404)
       }
 
-      // Prepare an object of updated fields
       const updateData: Record<string, any> = {}
       if (typeof body.companyName === 'string') {
         updateData.companyName = body.companyName
@@ -142,7 +125,6 @@ async function updateUserProfile(req: NextRequest, parsedBody?: any) {
 
       return successResponse(updated, 'Company profile updated successfully')
     } else {
-      // role = 'freelancer'
       const [existing] = await db
         .select()
         .from(freelancerTable)
@@ -158,8 +140,7 @@ async function updateUserProfile(req: NextRequest, parsedBody?: any) {
       }
       if (typeof body.skills === 'string') {
         updateData.skills = body.skills
-      }
-      else if (Array.isArray(body.skills)) {
+      } else if (Array.isArray(body.skills)) {
         updateData.skills = body.skills.join(', ')
       }
       if (typeof body.profilePicUrl === 'string') {
@@ -184,18 +165,12 @@ async function updateUserProfile(req: NextRequest, parsedBody?: any) {
   }
 }
 
-/**
-  • DELETE /api/userProfile
-*/
 async function deleteUserProfile(req: NextRequest, parsedBody?: any) {
   try {
-    // Log the request
     logApiRequest('DELETE', '/api/userProfile', req.ip || 'unknown')
-
-    // parse JSON if none
+    
     const body = parsedBody || await req.json();
-
-    // Validate required fields
+    
     const validation = validateRequiredFields(body, ['role', 'walletAddress'])
     if (!validation.isValid) {
       return errorResponse(
@@ -203,17 +178,13 @@ async function deleteUserProfile(req: NextRequest, parsedBody?: any) {
         400
       )
     }
-
-    // Validate role enum
     if (body.role !== 'company' && body.role !== 'freelancer') {
       return errorResponse('Role must be either "company" or "freelancer"', 400)
     }
-
-    // Validate wallet format
     if (!body.walletAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
       return errorResponse('Invalid wallet address format', 400)
     }
-
+    
     const lowerWallet = body.walletAddress.toLowerCase()
 
     if (body.role === 'company') {
@@ -225,14 +196,12 @@ async function deleteUserProfile(req: NextRequest, parsedBody?: any) {
       if (!existing) {
         return errorResponse('No matching company profile found', 404)
       }
-
       await db
         .delete(companyTable)
         .where(eq(companyTable.walletAddress, lowerWallet))
 
       return successResponse(null, 'Company profile deleted successfully')
     } else {
-      // role = 'freelancer'
       const [existing] = await db
         .select()
         .from(freelancerTable)
@@ -241,7 +210,6 @@ async function deleteUserProfile(req: NextRequest, parsedBody?: any) {
       if (!existing) {
         return errorResponse('No matching freelancer profile found', 404)
       }
-
       await db
         .delete(freelancerTable)
         .where(eq(freelancerTable.walletAddress, lowerWallet))
@@ -254,15 +222,10 @@ async function deleteUserProfile(req: NextRequest, parsedBody?: any) {
   }
 }
 
-// Validate for PUT and DELETE
 const updateUserProfileWithValidation = withValidation(updateUserProfile, updateUserProfileValidationSchema);
 const deleteUserProfileWithValidation = withValidation(deleteUserProfile, updateUserProfileValidationSchema);
 
-// Apply CORS
 export const GET = withCors(getUserProfile);
 export const PUT = withCors(updateUserProfileWithValidation);
 export const DELETE = withCors(deleteUserProfileWithValidation);
 export const OPTIONS = withCors(async () => NextResponse.json({}, { status: 204 }));
-
-// Force dynamic
-export const dynamic = 'force-dynamic';
