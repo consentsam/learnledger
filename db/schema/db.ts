@@ -26,7 +26,7 @@ import { Pool } from 'pg'
 const sslConfig = process.env.NODE_ENV === 'production'
   ? {
       ssl: {
-        rejectUnauthorized: true // Proper SSL verification for production
+        rejectUnauthorized: false // Proper SSL verification for production
       }
     }
   : {

@@ -34,11 +34,26 @@ export function errorResponse(message: string, status = 400, errors?: Record<str
 
 // Internal server error helper
 export function serverErrorResponse(error: any) {
-  console.error('[API Error]:', error);
+  const errorDetails = {
+    message: error?.message || 'Unknown error',
+    code: error?.code,
+    name: error?.name,
+    stack: error?.stack, // Include stack trace for Vercel logs
+    dbURL: process.env.DATABASE_URL 
+      ? `${process.env.DATABASE_URL.split('@')[0].split(':')[0]}:****@${process.env.DATABASE_URL.split('@')[1]}`
+      : 'DATABASE_URL not set',
+    env: process.env.NODE_ENV,
+    vercelEnv: process.env.VERCEL_ENV
+  };
+  
+  console.error('[API Error]:', JSON.stringify(errorDetails, null, 2));
+  
   return NextResponse.json(
     { 
       isSuccess: false, 
-      message: 'Internal server error' 
+      message: 'Internal server error',
+      // Always include debug info for now until we fix the issue
+      debugInfo: errorDetails
     } as ApiResponse,
     { status: 500 }
   );

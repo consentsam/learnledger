@@ -1,5 +1,7 @@
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { Pool } from 'pg'
+import fs from 'fs'
+import path from 'path'
 
 // Check for required environment variable
 if (!process.env.DATABASE_URL) {
@@ -7,10 +9,53 @@ if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL environment variable is required");
 }
 
-// Disable TLS certificate validation for development
-if (process.env.NODE_ENV !== 'production') {
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+// Function to get CA certificate based on environment
+function getCACertificate() {
+  // If SSL validation is explicitly disabled via env var, don't bother with certificate
+  if (process.env.DISABLE_SSL_VALIDATION === 'true') {
+    console.warn("⚠️ SSL certificate validation disabled via environment variable");
+    return undefined;
+  }
+
+  try {
+    // For production (Vercel), use the certificate from the public directory
+    if (process.env.NODE_ENV === 'production') {
+      // When deployed to Vercel, the public directory is at the root
+      const certPath = path.join(process.cwd(), 'public/certs/ca-certificate.crt');
+      if (fs.existsSync(certPath)) {
+        return fs.readFileSync(certPath).toString();
+      }
+    } else {
+      // For local development, try to use the certificate from the downloads directory
+      const devCertPath = '/Users/sattu/Downloads/ca-certificate.crt';
+      if (fs.existsSync(devCertPath)) {
+        return fs.readFileSync(devCertPath).toString();
+      }
+    }
+    
+    // If certificate not found, log it and fall back to disabling TLS validation
+    console.warn("⚠️ CA Certificate not found, falling back to insecure connection");
+    return undefined;
+  } catch (error) {
+    console.error("❌ Error reading CA certificate:", error);
+    return undefined;
+  }
 }
+
+// Get CA certificate
+const caCert = getCACertificate();
+
+// Configure SSL options based on environment and certificate availability
+const sslConfig = caCert 
+  ? {
+      ca: caCert,
+      // Still keep rejectUnauthorized true when using a CA cert
+      rejectUnauthorized: true
+    }
+  : {
+      // Fall back to this when no cert is available
+      rejectUnauthorized: false
+    };
 
 // Create connection pool with SSL for DigitalOcean PostgreSQL
 const pool = new Pool({
@@ -19,15 +64,14 @@ const pool = new Pool({
   connectionTimeoutMillis: 5000, // 5 second timeout
   max: 10, // Maximum 10 clients in pool
   idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
-  ssl: {
-    rejectUnauthorized: false // Allow self-signed certificates for development
-  }
+  ssl: sslConfig
 });
 
 // Test database connection on start
 pool.connect()
   .then(client => {
     console.log('✅ Successfully connected to DigitalOcean PostgreSQL database');
+    console.log(`✅ SSL configuration: ${caCert ? 'Using CA certificate' : 'Certificate validation disabled'}`);
     client.release();
   })
   .catch(err => {
