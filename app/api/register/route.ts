@@ -151,6 +151,7 @@ const handlerWithValidation = withValidation(registerHandler, registerValidation
 export const POST = withCors(handlerWithValidation);
 
 // Handle OPTIONS requests for CORS preflight
-export const OPTIONS = withCors(async (req) => {
+export const OPTIONS = withCors(async () => {
+  // Empty handler, the CORS middleware will create the proper OPTIONS response
   return new Response(null, { status: 204 });
 });

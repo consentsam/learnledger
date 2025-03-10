@@ -38,5 +38,6 @@ async function getApiDocs(req: NextRequest) {
 // Apply CORS to route handler
 export const GET = withCors(getApiDocs);
 export const OPTIONS = withCors(async () => {
+  // Empty handler, the CORS middleware will create the proper OPTIONS response
   return new Response(null, { status: 204 });
 }); 

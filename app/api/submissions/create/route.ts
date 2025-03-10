@@ -70,5 +70,6 @@ async function createSubmission(req: NextRequest, parsedBody?: any) {
 // Apply CORS to route handlers
 export const POST = withCors(createSubmission);
 export const OPTIONS = withCors(async () => {
+  // Empty handler, the CORS middleware will create the proper OPTIONS response
   return new Response(null, { status: 204 });
 });

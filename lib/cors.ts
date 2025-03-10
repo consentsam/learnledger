@@ -46,11 +46,12 @@ export function addCorsHeaders(
   
   // Check if the origin is allowed or if we're in development
   const isAllowed = process.env.NODE_ENV === 'development' || 
-                   allowedOrigins.includes(origin);
+                   allowedOrigins.includes(origin) ||
+                   origin === ''; // Allow requests with no origin (like mobile apps or curl)
   
   if (isAllowed) {
     // Set CORS headers
-    res.headers.set('Access-Control-Allow-Origin', origin);
+    res.headers.set('Access-Control-Allow-Origin', origin || '*');
     res.headers.set('Access-Control-Allow-Methods', allowedMethods.join(', '));
     res.headers.set('Access-Control-Allow-Headers', allowedHeaders.join(', '));
     
@@ -66,15 +67,53 @@ export function addCorsHeaders(
  * Middleware to handle CORS preflight requests and add CORS headers to responses
  */
 export function withCors(
-  handler: (req: NextRequest) => Promise<NextResponse>, 
+  handler: (req: NextRequest) => Promise<NextResponse | Response>, 
   options: CorsOptions = {}
 ) {
   return async function corsHandler(req: NextRequest) {
     // Handle preflight OPTIONS request
     if (req.method === 'OPTIONS') {
-      // Create a proper response for OPTIONS preflight
-      const preflightResponse = NextResponse.json({}, { status: 204 });
-      return addCorsHeaders(req, preflightResponse, options);
+      // Create a new Response object with no body and 204 status
+      // This is the correct way to handle a preflight request
+      const response = new Response(null, { status: 204 });
+      
+      // Add CORS headers directly to the response headers
+      const origin = req.headers.get('origin') || '*';
+      const defaultOptions: Required<CorsOptions> = {
+        allowedMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+        allowedHeaders: [
+          'Content-Type', 
+          'Authorization', 
+          'X-Requested-With',
+          'Accept',
+          'Accept-Version',
+          'Content-Length',
+          'Content-MD5',
+          'Date',
+          'X-Api-Version',
+          'Origin',
+          'Cache-Control'
+        ],
+        allowCredentials: true,
+      };
+      
+      // Merge with custom options
+      const {
+        allowedMethods,
+        allowedHeaders,
+        allowCredentials,
+      } = { ...defaultOptions, ...options };
+      
+      // Set CORS headers
+      response.headers.set('Access-Control-Allow-Origin', origin);
+      response.headers.set('Access-Control-Allow-Methods', allowedMethods.join(', '));
+      response.headers.set('Access-Control-Allow-Headers', allowedHeaders.join(', '));
+      
+      if (allowCredentials) {
+        response.headers.set('Access-Control-Allow-Credentials', 'true');
+      }
+      
+      return response;
     }
     
     try {
@@ -82,7 +121,7 @@ export function withCors(
       const response = await handler(req);
       
       // Add CORS headers to the response
-      return addCorsHeaders(req, response, options);
+      return addCorsHeaders(req, response as NextResponse, options);
     } catch (error) {
       console.error('CORS middleware error:', error);
       

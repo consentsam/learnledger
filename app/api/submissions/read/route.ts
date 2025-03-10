@@ -135,5 +135,6 @@ async function getSubmissionsPost(req: NextRequest, parsedBody?: any) {
 export const GET = withCors(getSubmissions);
 export const POST = withCors(getSubmissionsPost);
 export const OPTIONS = withCors(async () => {
+  // Empty handler, the CORS middleware will create the proper OPTIONS response
   return new Response(null, { status: 204 });
 });

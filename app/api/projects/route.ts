@@ -231,5 +231,6 @@ async function createProject(req: NextRequest, parsedBody?: any) {
 export const GET = withCors(getProjects);
 export const POST = withCors(createProject);
 export const OPTIONS = withCors(async () => {
+  // Empty handler, the CORS middleware will create the proper OPTIONS response
   return new Response(null, { status: 204 });
 });
