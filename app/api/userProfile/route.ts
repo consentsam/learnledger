@@ -151,11 +151,15 @@ async function updateUserProfile(req: NextRequest, parsedBody?: any) {
       }
 
       const updateData: Record<string, any> = {}
-      if (typeof body.name === 'string') {
-        updateData.name = body.name
+      if (typeof body.freelancerName === 'string') {
+        updateData.freelancerName = body.freelancerName
       }
       if (typeof body.skills === 'string') {
         updateData.skills = body.skills
+      }
+      else if (Array.isArray(body.skills)) {
+        // Convert skills array to string
+        updateData.skills = body.skills.join(', ')
       }
       if (typeof body.profilePicUrl === 'string') {
         updateData.profilePicUrl = body.profilePicUrl
