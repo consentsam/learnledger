@@ -9,23 +9,24 @@ import {
 } from '@/app/api/api-utils'
 import { withCors } from '@/lib/cors'
 
+
 /**
- * POST /api/submissions/create
- * JSON body:
- * {
- *   "projectId": string,
- *   "freelancerAddress": string,
- *   "prLink": string
- * }
- */
+  • POST /api/submissions/create
+  • JSON body:
+  • {
+  • "projectId": string,
+  • "freelancerAddress": string,
+  • "prLink": string
+  • }
+*/
 async function createSubmission(req: NextRequest, parsedBody?: any) {
   try {
     // Log the request
     logApiRequest('POST', '/api/submissions/create', req.ip || 'unknown')
-    
-    // Use the parsed body passed from middleware
-    const body = parsedBody || {};
-    
+
+    // Fix: parse request body if none is provided
+    const body = parsedBody || await req.json();
+
     // Validate required fields
     const validation = validateRequiredFields(body, ['projectId', 'freelancerAddress', 'prLink'])
     if (!validation.isValid) {
@@ -34,14 +35,14 @@ async function createSubmission(req: NextRequest, parsedBody?: any) {
         400
       )
     }
-    
+
     // Validate wallet format
     if (!body.freelancerAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
       return errorResponse('Invalid freelancer wallet address format', 400)
     }
-    
+
     // Validate PR link
-    const prLinkRegex = /^https:\/\/github\.com\/[\w-]+\/[\w-]+\/pull\/\d+$/
+    const prLinkRegex = /^https:\/\/github\.com\/[\w-]+\/[\w-]+\/pull\/\d+$/;
     if (!prLinkRegex.test(body.prLink)) {
       return errorResponse(
         'Invalid PR link format. Expected: https://github.com/owner/repo/pull/123',

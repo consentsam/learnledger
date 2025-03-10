@@ -1,31 +1,29 @@
-// app/api/userProfile/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
 
 import { getUserProfileAction } from '@/actions/db/user-profile-actions'
-import { 
-  successResponse, 
-  errorResponse, 
+import {
+  successResponse,
+  errorResponse,
   serverErrorResponse,
   validateRequiredFields,
-  logApiRequest 
+  logApiRequest
 } from '@/app/api/api-utils'
 import { withCors } from '@/lib/cors'
 import { withValidation, rules } from '@/lib/middleware/validation' // Import validation middleware
 
-// We import the DB and tables to do manual updates and deletes:
 import { db } from '@/db/db'
 import { companyTable } from '@/db/schema/company-schema'
 import { freelancerTable } from '@/db/schema/freelancer-schema'
 
 /**
- * GET /api/userProfile?wallet=0x...&role=company|freelancer
- */
+  • GET /api/userProfile?wallet=0x…&role=company|freelancer
+*/
 async function getUserProfile(req: NextRequest) {
   try {
     // Log the request
     logApiRequest('GET', '/api/userProfile', req.ip || 'unknown')
-    
+
     const { searchParams } = new URL(req.url)
     const wallet = searchParams.get('wallet')?.toLowerCase()
     const role = searchParams.get('role') // "company" or "freelancer"
@@ -53,10 +51,8 @@ async function getUserProfile(req: NextRequest) {
     })
 
     const response = successResponse(result.data, undefined, 200);
-    
     // Add cache control headers (cache for 5 minutes)
     response.headers.set('Cache-Control', 'public, max-age=300');
-    
     return response;
   } catch (error) {
     return serverErrorResponse(error);
@@ -78,29 +74,18 @@ const updateUserProfileValidationSchema = {
 };
 
 /**
- * PUT /api/userProfile
- * Update a user profile.
- * 
- * Body JSON should contain:
- * {
- *   "role": "company" or "freelancer",
- *   "walletAddress": "0xYourAddress",
- *   ...fields to update...
- * }
- */
+  • PUT /api/userProfile
+  • Update a user profile.
+*/
 async function updateUserProfile(req: NextRequest, parsedBody?: any) {
   try {
     // Log the request
     logApiRequest('PUT', '/api/userProfile', req.ip || 'unknown')
-    
-    // Use the parsed body passed from middleware
-    const body = parsedBody || {};
-    
-    // Debug logging
+
+    // Fix: parse JSON body if none is given
+    const body = parsedBody || await req.json();
     console.log('[updateUserProfile] Request body:', JSON.stringify(body));
-    console.log('[updateUserProfile] Content-Type:', req.headers.get('content-type'));
-    console.log('[updateUserProfile] Method:', req.method);
-    
+
     // Validate required fields
     const validation = validateRequiredFields(body, ['role', 'walletAddress'])
     if (!validation.isValid) {
@@ -109,17 +94,17 @@ async function updateUserProfile(req: NextRequest, parsedBody?: any) {
         400
       )
     }
-    
+
     // Validate role enum
     if (body.role !== 'company' && body.role !== 'freelancer') {
       return errorResponse('Role must be either "company" or "freelancer"', 400)
     }
-    
+
     // Validate wallet format
     if (!body.walletAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
       return errorResponse('Invalid wallet address format', 400)
     }
-    
+
     const lowerWallet = body.walletAddress.toLowerCase()
 
     // We'll do a quick check if user already exists
@@ -134,7 +119,6 @@ async function updateUserProfile(req: NextRequest, parsedBody?: any) {
       }
 
       // Prepare an object of updated fields
-      // (only update if present in body)
       const updateData: Record<string, any> = {}
       if (typeof body.companyName === 'string') {
         updateData.companyName = body.companyName
@@ -146,12 +130,10 @@ async function updateUserProfile(req: NextRequest, parsedBody?: any) {
         updateData.logoUrl = body.logoUrl
       }
 
-      // If nothing to update, bail out
       if (Object.keys(updateData).length === 0) {
         return errorResponse('No valid fields provided for update', 400)
       }
 
-      // Perform update
       const [updated] = await db
         .update(companyTable)
         .set(updateData)
@@ -178,7 +160,6 @@ async function updateUserProfile(req: NextRequest, parsedBody?: any) {
         updateData.skills = body.skills
       }
       else if (Array.isArray(body.skills)) {
-        // Convert skills array to string
         updateData.skills = body.skills.join(', ')
       }
       if (typeof body.profilePicUrl === 'string') {
@@ -204,22 +185,16 @@ async function updateUserProfile(req: NextRequest, parsedBody?: any) {
 }
 
 /**
- * DELETE /api/userProfile
- * 
- * Body JSON:
- * {
- *   "role": "company" | "freelancer",
- *   "walletAddress": "0x..."
- * }
- */
+  • DELETE /api/userProfile
+*/
 async function deleteUserProfile(req: NextRequest, parsedBody?: any) {
   try {
     // Log the request
     logApiRequest('DELETE', '/api/userProfile', req.ip || 'unknown')
-    
-    // Use the parsed body passed from middleware
-    const body = parsedBody || {};
-    
+
+    // parse JSON if none
+    const body = parsedBody || await req.json();
+
     // Validate required fields
     const validation = validateRequiredFields(body, ['role', 'walletAddress'])
     if (!validation.isValid) {
@@ -228,21 +203,20 @@ async function deleteUserProfile(req: NextRequest, parsedBody?: any) {
         400
       )
     }
-    
+
     // Validate role enum
     if (body.role !== 'company' && body.role !== 'freelancer') {
       return errorResponse('Role must be either "company" or "freelancer"', 400)
     }
-    
+
     // Validate wallet format
     if (!body.walletAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
       return errorResponse('Invalid wallet address format', 400)
     }
-    
+
     const lowerWallet = body.walletAddress.toLowerCase()
 
     if (body.role === 'company') {
-      // check existence
       const [existing] = await db
         .select()
         .from(companyTable)
@@ -252,7 +226,6 @@ async function deleteUserProfile(req: NextRequest, parsedBody?: any) {
         return errorResponse('No matching company profile found', 404)
       }
 
-      // delete
       await db
         .delete(companyTable)
         .where(eq(companyTable.walletAddress, lowerWallet))
@@ -281,30 +254,15 @@ async function deleteUserProfile(req: NextRequest, parsedBody?: any) {
   }
 }
 
-// Define validation schema for DELETE endpoint
-const deleteUserProfileValidationSchema = {
-  body: {
-    role: [
-      rules.required('role'),
-      rules.isValidRole('role'),
-    ],
-    walletAddress: [
-      rules.required('walletAddress'),
-      rules.isWalletAddress('walletAddress'),
-    ],
-  },
-};
-
-// Apply validation middleware to route handlers
+// Validate for PUT and DELETE
 const updateUserProfileWithValidation = withValidation(updateUserProfile, updateUserProfileValidationSchema);
-const deleteUserProfileWithValidation = withValidation(deleteUserProfile, deleteUserProfileValidationSchema);
+const deleteUserProfileWithValidation = withValidation(deleteUserProfile, updateUserProfileValidationSchema);
 
-// Add CORS support to each route handler
+// Apply CORS
 export const GET = withCors(getUserProfile);
-export const PUT = withCors(updateUserProfileWithValidation); // Apply validation middleware to PUT
-export const DELETE = withCors(deleteUserProfileWithValidation); // Apply validation middleware to DELETE
+export const PUT = withCors(updateUserProfileWithValidation);
+export const DELETE = withCors(deleteUserProfileWithValidation);
 export const OPTIONS = withCors(async () => NextResponse.json({}, { status: 204 }));
 
-// @ts-nocheck
-// Force this API route to be dynamic
+// Force dynamic
 export const dynamic = 'force-dynamic';

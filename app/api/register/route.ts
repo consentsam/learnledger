@@ -1,4 +1,4 @@
-// app/api/register/route.ts
+"use server"
 import { NextRequest } from 'next/server'
 import { registerUserProfileAction } from '@/actions/db/user-profile-actions'
 import { 
@@ -10,6 +10,7 @@ import {
 } from '@/app/api/api-utils'
 import { withValidation, rules } from '@/lib/middleware/validation';
 import { withCors } from '@/lib/cors';
+
 
 // @ts-nocheck
 // Force this API route to be dynamic
@@ -29,7 +30,7 @@ const registerValidationSchema = {
     // Company-specific validations
     companyName: [
       rules.custom(
-        'companyName', 
+        'companyName',
         (value: string | undefined, body: any) => {
           // Only required if role is company
           if (body?.role !== 'company') return true;
@@ -53,7 +54,7 @@ const registerValidationSchema = {
   },
 };
 
-// The original handler without validation logic
+// The original handler
 async function registerHandler(req: NextRequest, parsedBody?: any) {
   try {
     // Log environment information for debugging
@@ -61,17 +62,17 @@ async function registerHandler(req: NextRequest, parsedBody?: any) {
     console.log(`[Register API] DISABLE_SSL_VALIDATION: ${process.env.DISABLE_SSL_VALIDATION || 'not set'}`);
     console.log(`[Register API] NODE_TLS_REJECT_UNAUTHORIZED: ${process.env.NODE_TLS_REJECT_UNAUTHORIZED || 'not set'}`);
     console.log(`[Register API] Database URL: ${process.env.DATABASE_URL?.replace(/:[^:]*@/, ':****@')}`);
-    
+
     // Log the request
     logApiRequest('POST', '/api/register', req.ip || 'unknown')
-    
-    // Use the parsed body from middleware
-    const body = parsedBody || {};
-    
+
+    // Fix: parse the JSON from request if no parsedBody is given
+    const body = parsedBody || await req.json();
+
     console.log(`[Register API] Registration attempt for wallet: ${body.walletAddress?.substr(0,10)}... with role: ${body.role}`);
-    
-    // Role-specific validation is now handled by the middleware
-    
+
+    // Role-specific validation is done by the middleware now
+
     // Call the server action
     console.log(`[Register API] Calling registerUserProfileAction`);
     const result = await registerUserProfileAction({
@@ -80,7 +81,7 @@ async function registerHandler(req: NextRequest, parsedBody?: any) {
       companyName: body.companyName,
       shortDescription: body.shortDescription,
       logoUrl: body.logoUrl,
-      freelancerName: body.freelancerName, // Use freelancerName directly now
+      freelancerName: body.freelancerName,
       skills: body.skills,
       profilePicUrl: body.profilePicUrl,
     })
@@ -121,8 +122,8 @@ async function registerHandler(req: NextRequest, parsedBody?: any) {
       
       // Add any additional error details if available
       if (result.error) {
-        errorDetails.error = typeof result.error === 'object' 
-          ? result.error 
+        errorDetails.error = typeof result.error === 'object'
+          ? result.error
           : { message: String(result.error) };
       }
       
@@ -131,9 +132,10 @@ async function registerHandler(req: NextRequest, parsedBody?: any) {
 
     console.log(`[Register API] Registration successful`);
     return successResponse(result.data, 'Successfully registered profile')
+
   } catch (error: any) {
     console.error('[Register API] Unhandled error:', error)
-    
+
     // Create error details object
     const errorDetails: ErrorDetails = {
       message: error?.message || 'Registration failed due to an unexpected error',
@@ -141,17 +143,16 @@ async function registerHandler(req: NextRequest, parsedBody?: any) {
       env: process.env.NODE_ENV || 'unknown',
       vercelEnv: process.env.VERCEL_ENV || 'unknown'
     };
-    
+
     return serverErrorResponse(error, errorDetails);
   }
 }
 
-// Apply CORS and validation middleware to the handler
+// Apply CORS and validation middleware
 const handlerWithValidation = withValidation(registerHandler, registerValidationSchema);
 export const POST = withCors(handlerWithValidation);
 
-// Handle OPTIONS requests for CORS preflight
+// Handle OPTIONS requests
 export const OPTIONS = withCors(async () => {
-  // Empty handler, the CORS middleware will create the proper OPTIONS response
   return new Response(null, { status: 204 });
 });
