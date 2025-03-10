@@ -12,7 +12,7 @@ export const freelancerTable = pgTable('freelancer', {
   walletAddress: text('wallet_address').notNull(),
 
   // The "freelancer name" or public name
-  freelancerName: text('freelancer_name').notNull(),
+  name: text('name').notNull(),
 
   // For storing their skillset (comma-separated or free text for MVP)
   skills: text('skills'),
