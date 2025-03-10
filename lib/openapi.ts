@@ -179,7 +179,7 @@ export const apiSchema = createSwaggerSpec({
             walletAddress: {
               $ref: '#/components/schemas/WalletAddress',
             },
-            freelancerName: {
+            name: {
               type: 'string',
               example: 'John Doe',
             },
@@ -201,7 +201,7 @@ export const apiSchema = createSwaggerSpec({
               format: 'date-time',
             },
           },
-          required: ['id', 'walletAddress', 'freelancerName'],
+          required: ['id', 'walletAddress', 'name'],
         },
         // Projects
         Project: {
@@ -431,7 +431,7 @@ export const apiSchema = createSwaggerSpec({
                       type: 'string',
                       description: 'URL to company logo image'
                     },
-                    freelancerName: {
+                    name: {
                       type: 'string',
                       description: 'Required for freelancer profiles'
                     },
@@ -454,6 +454,28 @@ export const apiSchema = createSwaggerSpec({
                     companyName: 'Acme Corporation',
                     shortDescription: 'Leading provider of blockchain solutions',
                     logoUrl: 'https://example.com/logo.png'
+                  },
+                  examples: {
+                    company: {
+                      value: {
+                        walletAddress: '0x742d35Cc6634C0532925a3b844Bc454e4438f44e',
+                        role: 'company',
+                        companyName: 'Blockchain Innovations Inc.',
+                        companyWebsite: 'https://blockchain-innovations.com'
+                      }
+                    },
+                    freelancer: {
+                      value: {
+                        walletAddress: '0x742d35Cc6634C0532925a3b844Bc454e4438f44e',
+                        role: 'freelancer',
+                        name: 'John Doe',
+                        skills: [
+                          'JavaScript',
+                          'React',
+                          'Web3'
+                        ]
+                      }
+                    }
                   }
                 }
               }
@@ -752,7 +774,7 @@ export const apiSchema = createSwaggerSpec({
                       type: 'string',
                       description: 'URL to company logo image'
                     },
-                    freelancerName: {
+                    name: {
                       type: 'string',
                       description: 'For freelancer profiles'
                     },
@@ -774,7 +796,14 @@ export const apiSchema = createSwaggerSpec({
                     walletAddress: '0x742d35Cc6634C0532925a3b844Bc454e4438f44e',
                     companyName: 'Acme Corporation Updated',
                     shortDescription: 'Leading provider of advanced blockchain solutions',
-                    logoUrl: 'https://example.com/new-logo.png'
+                    logoUrl: 'https://example.com/new-logo.png',
+                    name: 'Updated Name',
+                    skills: [
+                      'JavaScript',
+                      'React',
+                      'Web3',
+                      'Solidity'
+                    ]
                   }
                 }
               }

@@ -206,7 +206,7 @@
                     "type": "string",
                     "description": "URL to company logo image"
                   },
-                  "freelancerName": {
+                  "name": {
                     "type": "string",
                     "description": "Required for freelancer profiles"
                   },
