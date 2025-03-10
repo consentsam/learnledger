@@ -99,7 +99,7 @@ Creates a new user profile (either company or freelancer).
   "role": "company|freelancer",
   "companyName": "Company Name", // if role is company
   "companyWebsite": "https://example.com", // if role is company
-  "name": "Full Name", // if role is freelancer
+  "freelancerName": "Full Name", // if role is freelancer
   "skills": ["JavaScript", "React", "Web3"] // if role is freelancer
 }
 ```
@@ -109,7 +109,7 @@ Creates a new user profile (either company or freelancer).
 ```json
 {
   "isSuccess": true,
-  "message": "Registration successful",
+  "message": "Successfully registered profile",
   "data": {
     "id": "uuid",
     "walletAddress": "0x...",

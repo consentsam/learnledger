@@ -124,15 +124,15 @@ registerUser('company', {
   companyName: 'Acme Inc',
   companyWebsite: 'https://acme.com',
 })
-  .then(response => console.log('Registration successful:', response))
+  .then(response => console.log('Successfully registered profile:', response))
   .catch(error => console.error('Registration failed:', error));
 
 // For a freelancer
 registerUser('freelancer', {
-  name: 'John Doe',
+  freelancerName: 'John Doe',
   skills: ['JavaScript', 'React', 'Solidity'],
 })
-  .then(response => console.log('Registration successful:', response))
+  .then(response => console.log('Successfully registered profile:', response))
   .catch(error => console.error('Registration failed:', error));
 ```
 

@@ -29,7 +29,7 @@ curl -X 'POST' \
   -d '{
   "walletAddress": "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
   "role": "freelancer",
-  "name": "John Doe",
+  "freelancerName": "John Doe",
   "skills": ["JavaScript", "React", "Web3"]
 }'
 ```

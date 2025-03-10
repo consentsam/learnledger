@@ -320,7 +320,7 @@
                     "id": {
                         "type": "string",
                         "format": "uuid",
-                        "example": "123e4567-e89b-12d3-a456-426614174000"
+                        "example": "c90df756-8eb9-47f7-9f3e-6d5d6d669380"
                     },
                     "walletAddress": {
                         "$ref": "#/components/schemas/WalletAddress"
@@ -331,7 +331,7 @@
                             "company",
                             "freelancer"
                         ],
-                        "example": "company"
+                        "example": "freelancer"
                     },
                     "companyName": {
                         "type": "string",
@@ -342,26 +342,34 @@
                         "format": "uri",
                         "example": "https://blockchain-innovations.com"
                     },
-                    "name": {
+                    "freelancerName": {
                         "type": "string",
                         "example": "John Doe"
                     },
                     "skills": {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "example": [
-                            "JavaScript",
-                            "React",
-                            "Web3"
-                        ]
+                        "type": "string",
+                        "description": "Skills for freelancer profiles (comma-separated string)",
+                        "example": "JavaScript, React, Web3"
+                    },
+                    "profilePicUrl": {
+                        "type": "string",
+                        "format": "uri",
+                        "example": ""
+                    },
+                    "createdAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2025-03-10T08:39:34.738Z"
+                    },
+                    "updatedAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2025-03-10T08:39:34.738Z"
                     }
                 },
                 "required": [
                     "id",
-                    "walletAddress",
-                    "role"
+                    "walletAddress"
                 ]
             },
             "ProjectStats": {
@@ -972,7 +980,7 @@
                                         },
                                         "message": {
                                             "type": "string",
-                                            "example": "Registration successful"
+                                            "example": "Successfully registered profile"
                                         },
                                         "data": {
                                             "$ref": "#/components/schemas/UserProfile"
