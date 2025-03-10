@@ -81,6 +81,11 @@ async function updateUserProfile(req: NextRequest, parsedBody?: any) {
     // Use the parsed body passed from middleware
     const body = parsedBody || {};
     
+    // Debug logging
+    console.log('[updateUserProfile] Request body:', JSON.stringify(body));
+    console.log('[updateUserProfile] Content-Type:', req.headers.get('content-type'));
+    console.log('[updateUserProfile] Method:', req.method);
+    
     // Validate required fields
     const validation = validateRequiredFields(body, ['role', 'walletAddress'])
     if (!validation.isValid) {
