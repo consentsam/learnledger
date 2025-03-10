@@ -75,7 +75,7 @@ export async function registerUserProfileAction(params: {
   logoUrl?: string
   // Freelancer fields
   freelancerName?: string
-  skills?: string
+  skills?: string | string[]
   profilePicUrl?: string
 }) {
   try {
@@ -130,6 +130,17 @@ export async function registerUserProfileAction(params: {
     } else {
       // role = 'freelancer'
       console.log('[Registration] Creating freelancer profile');
+      
+      // Convert skills array to string if needed
+      let skillsString = '';
+      if (params.skills) {
+        if (Array.isArray(params.skills)) {
+          skillsString = params.skills.join(', ');
+        } else {
+          skillsString = params.skills;
+        }
+      }
+      
       try {
         // 1) Insert the row in `freelancer` table
         const [inserted] = await db
@@ -137,42 +148,51 @@ export async function registerUserProfileAction(params: {
           .values({
             walletAddress: lowerWalletAddress,
             freelancerName: params.freelancerName ?? '',
-            skills: params.skills ?? '',
+            skills: skillsString,
             profilePicUrl: params.profilePicUrl ?? '',
           })
           .returning()
 
         console.log('[Registration] Freelancer profile created successfully');
 
-        // 2) If user typed some skills, parse them, create bridging records
-        const rawSkillsString = params.skills?.trim() || ''
-        if (rawSkillsString) {
-          console.log(`[Registration] Processing skills: ${rawSkillsString}`);
-          // e.g. "react, solidity"
-          const skillNames = rawSkillsString
-            .split(',')
-            .map(s => s.trim())
-            .filter(Boolean)
+        // 2) Process skills - handle both string and array formats
+        let skillNames = [];
+        
+        if (Array.isArray(params.skills)) {
+          // If skills is already an array, use it directly
+          skillNames = params.skills.filter(Boolean);
+          console.log(`[Registration] Processing skills array: ${skillNames.join(', ')}`);
+        } else {
+          // If skills is a string, parse it as before
+          const rawSkillsString = skillsString.trim() || '';
+          if (rawSkillsString) {
+            console.log(`[Registration] Processing skills string: ${rawSkillsString}`);
+            skillNames = rawSkillsString
+              .split(',')
+              .map(s => s.trim())
+              .filter(Boolean);
+          }
+        }
 
-          for (const skillName of skillNames) {
-            // a) Create or fetch row in `skills` table
-            console.log(`[Registration] Processing skill: ${skillName}`);
-            try {
-              const skillRes = await getOrCreateSkillAction(skillName)
-              if (skillRes.isSuccess && skillRes.data) {
-                // b) Add bridging entry in user_skills
-                console.log(`[Registration] Adding skill to user: ${skillName}`);
-                await addSkillToUserAction({
-                  userId: lowerWalletAddress,
-                  skillId: skillRes.data.id
-                })
-              } else {
-                console.warn(`[Registration] Failed to create skill: ${skillName}`, skillRes.message);
-              }
-            } catch (skillError) {
-              console.error(`[Registration] Error processing skill ${skillName}:`, skillError);
-              // Continue with other skills even if one fails
+        // Process each skill
+        for (const skillName of skillNames) {
+          // a) Create or fetch row in `skills` table
+          console.log(`[Registration] Processing skill: ${skillName}`);
+          try {
+            const skillRes = await getOrCreateSkillAction(skillName)
+            if (skillRes.isSuccess && skillRes.data) {
+              // b) Add bridging entry in user_skills
+              console.log(`[Registration] Adding skill to user: ${skillName}`);
+              await addSkillToUserAction({
+                userId: lowerWalletAddress,
+                skillId: skillRes.data.id
+              })
+            } else {
+              console.warn(`[Registration] Failed to create skill: ${skillName}`, skillRes.message);
             }
+          } catch (skillError) {
+            console.error(`[Registration] Error processing skill ${skillName}:`, skillError);
+            // Continue with other skills even if one fails
           }
         }
 
