@@ -12,7 +12,29 @@ This guide explains how to deploy the ProjectLedger application to Vercel with p
 
 ### 1. Prepare the CA Certificate
 
-The CA certificate has been placed in the `public/certs/` directory. This will ensure it's included in the deployment to Vercel.
+The CA certificate must be correctly placed for deployment to Vercel. We've included a helper script to do this:
+
+```bash
+# Run the certificate preparation script
+npm run prepare-cert
+```
+
+This script will:
+- Create the `public/certs` directory if it doesn't exist
+- Copy the CA certificate from `/Users/sattu/Downloads/ca-certificate.crt` to `public/certs/`
+- Provide appropriate messaging if the certificate is already in place or not found
+
+You can also manually place the certificate:
+
+```bash
+# Create the directory if it doesn't exist
+mkdir -p public/certs
+
+# Copy your CA certificate
+cp ~/Downloads/ca-certificate.crt public/certs/
+```
+
+> **Note**: This preparation happens automatically during the build process thanks to the `prebuild` script in package.json.
 
 ### 2. Deploy to Vercel
 
@@ -70,6 +92,7 @@ After deployment, check the function logs in Vercel to ensure:
 
 Look for these log messages:
 ```
+✅ Found CA certificate at: /var/task/public/certs/ca-certificate.crt
 ✅ Successfully connected to DigitalOcean PostgreSQL database
 ✅ SSL configuration: Using CA certificate
 ```

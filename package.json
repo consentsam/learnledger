@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prepare-cert": "node scripts/prepare-cert.js",
+    "prebuild": "npm run prepare-cert",
     "build": "DISABLE_TYPESCRIPT_TYPECHECK=true NEXT_PUBLIC_SKIP_API_ROUTES=true next build --no-lint",
     "start": "next start",
     "lint": "next lint",

@@ -47,6 +47,5 @@
         "env": {
             "NODE_ENV": "production"
         }
-    },
-    "publicDirectory": "public"
+    }
 }

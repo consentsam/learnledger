@@ -18,13 +18,23 @@ function getCACertificate() {
   }
 
   try {
-    // For production (Vercel), use the certificate from the public directory
+    // For production (Vercel), try multiple possible locations
     if (process.env.NODE_ENV === 'production') {
-      // When deployed to Vercel, the public directory is at the root
-      const certPath = path.join(process.cwd(), 'public/certs/ca-certificate.crt');
-      if (fs.existsSync(certPath)) {
-        return fs.readFileSync(certPath).toString();
+      // Try standard paths for Vercel deployments
+      const possiblePaths = [
+        path.join(process.cwd(), 'public/certs/ca-certificate.crt'),
+        path.join(process.cwd(), '.vercel/output/static/certs/ca-certificate.crt'),
+        path.join(process.cwd(), 'certs/ca-certificate.crt')
+      ];
+      
+      for (const certPath of possiblePaths) {
+        if (fs.existsSync(certPath)) {
+          console.log(`✅ Found CA certificate at: ${certPath}`);
+          return fs.readFileSync(certPath).toString();
+        }
       }
+      
+      console.warn("⚠️ Could not find CA certificate in Vercel environment");
     } else {
       // For local development, try to use the certificate from the downloads directory
       const devCertPath = '/Users/sattu/Downloads/ca-certificate.crt';
