@@ -61,6 +61,8 @@ curl -X 'PUT' \
 
 ### Create a Project
 
+> **Note**: The API implementation may have issues with field validation. If you encounter errors when creating projects despite following the documentation, please report them.
+
 ```bash
 curl -X 'POST' \
   'https://learn-ledger-api.vercel.app/api/projects' \

@@ -250,6 +250,8 @@ POST /api/projects
 
 Creates a new project.
 
+> **Note**: The API implementation may have issues with field validation. If you encounter errors when creating projects despite following the documentation, please report them.
+
 **Request Body:**
 
 ```json
