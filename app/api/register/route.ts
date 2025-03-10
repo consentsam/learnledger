@@ -39,9 +39,9 @@ const registerValidationSchema = {
       ),
     ],
     // Freelancer-specific validations
-    freelancerName: [
+    name: [
       rules.custom(
-        'freelancerName',
+        'name',
         (value: string | undefined, body: any) => {
           // Only required if role is freelancer
           if (body?.role !== 'freelancer') return true;
@@ -80,7 +80,7 @@ async function registerHandler(req: NextRequest, parsedBody?: any) {
       companyName: body.companyName,
       shortDescription: body.shortDescription,
       logoUrl: body.logoUrl,
-      freelancerName: body.freelancerName,
+      freelancerName: body.name, // Map name to freelancerName for backward compatibility
       skills: body.skills,
       profilePicUrl: body.profilePicUrl,
     })

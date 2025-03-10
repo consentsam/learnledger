@@ -151,8 +151,8 @@ async function updateUserProfile(req: NextRequest, parsedBody?: any) {
       }
 
       const updateData: Record<string, any> = {}
-      if (typeof body.freelancerName === 'string') {
-        updateData.freelancerName = body.freelancerName
+      if (typeof body.name === 'string') {
+        updateData.name = body.name
       }
       if (typeof body.skills === 'string') {
         updateData.skills = body.skills
