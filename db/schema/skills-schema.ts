@@ -3,7 +3,7 @@
  * @file skills-schema.ts
  *
  * @description
- * Defines the "skills" table, which holds skill entries recognized in ProjectLedger.
+ * Defines the "skills" table, which holds skill entries recognized in LearnLedger.
  *
  * Key features:
  * - Each skill is identified by a UUID primary key.

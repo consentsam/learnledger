@@ -19,7 +19,7 @@ export default function ApiDocs() {
 
   return (
     <div className="container mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-6">ProjectLedger API Documentation</h1>
+      <h1 className="text-2xl font-bold mb-6">LearnLedger API Documentation</h1>
       
       {spec ? (
         <SwaggerUI 

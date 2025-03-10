@@ -2,7 +2,7 @@
 
 # Deployment script for Vercel with CORS fixes
 
-echo "🚀 ProjectLedger Vercel Deployment Script (with CORS fixes)"
+echo "🚀 LearnLedger Vercel Deployment Script (with CORS fixes)"
 echo "==============================================="
 
 # Run the fix script to ensure all CORS issues are resolved

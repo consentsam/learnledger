@@ -1,6 +1,6 @@
-# ProjectLedger API Documentation
+# LearnLedger API Documentation
 
-Welcome to the ProjectLedger API documentation. This documentation is designed to help frontend developers integrate with our backend services.
+Welcome to the LearnLedger API documentation. This documentation is designed to help frontend developers integrate with our backend services.
 
 ## Documentation Files
 
@@ -17,7 +17,7 @@ For an interactive experience where you can test API endpoints directly in your 
 
 ## Getting Started
 
-To start using the ProjectLedger API:
+To start using the LearnLedger API:
 
 1. Connect your Metamask wallet
 2. Register a user profile (company or freelancer)

@@ -1,4 +1,4 @@
--- ProjectLedger Database Schema Setup
+-- LearnLedger Database Schema Setup
 -- Run this script to create all the required tables in your Supabase PostgreSQL database
 
 -- 1. Projects Table
@@ -162,4 +162,4 @@ VALUES
   ('UI/UX', 'User interface and experience design')
 ON CONFLICT (skill_name) DO NOTHING;
 
--- Done! Your database is now set up for ProjectLedger 
+-- Done! Your database is now set up for LearnLedger 

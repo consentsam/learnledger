@@ -16,7 +16,7 @@ const rl = readline.createInterface({
  * Main function to validate and update API documentation
  */
 async function validateAndUpdateApiDocs() {
-  console.log('=== ProjectLedger API Documentation Validation and Update Tool ===');
+  console.log('=== LearnLedger API Documentation Validation and Update Tool ===');
   console.log('This tool will help ensure that API documentation matches actual API responses.');
   console.log();
   

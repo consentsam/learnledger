@@ -1,6 +1,6 @@
-# ProjectLedger API Documentation
+# LearnLedger API Documentation
 
-This repository contains the API documentation for ProjectLedger, a blockchain-based project management system.
+This repository contains the API documentation for LearnLedger, a blockchain-based project management system.
 
 ## Deploying the API Documentation
 
@@ -69,4 +69,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Contact
 
-For questions or support, contact support@projectledger.com.
+For questions or support, contact support@LearnLedger.com.

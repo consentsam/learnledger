@@ -8,7 +8,7 @@ import { WalletProvider } from '@/components/utilities/wallet-provider'
 import { WebSocketLogger } from '@/components/utilities/web-socket-logger'
 
 export const metadata: Metadata = {
-  title: 'ProjectLedger',
+  title: 'LearnLedger',
   description: 'MVP with OpenCampus ID + Metamask',
 }
 

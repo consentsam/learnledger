@@ -2,7 +2,7 @@
 
 # Deploy script for Vercel that handles SSL certificate issues
 
-echo "🚀 ProjectLedger Vercel Deployment Script"
+echo "🚀 LearnLedger Vercel Deployment Script"
 echo "==============================================="
 
 # 1. Ensure the certificate directory exists

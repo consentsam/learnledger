@@ -11,7 +11,7 @@ async function getApiDocs(req: NextRequest) {
     return NextResponse.json({
       openapi: '3.0.0',
       info: {
-        title: 'ProjectLedger API',
+        title: 'LearnLedger API',
         version: '1.0.0',
         description: 'Full schema temporarily unavailable in production. Please refer to documentation.'
       },

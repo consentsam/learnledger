@@ -4,10 +4,10 @@ export default function HomePage() {
   return (
     <div className="container mx-auto px-4 py-12">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-4xl font-bold mb-6">ProjectLedger API</h1>
+        <h1 className="text-4xl font-bold mb-6">LearnLedger API</h1>
         
         <p className="text-lg mb-8">
-          Welcome to the ProjectLedger API documentation and testing site. This platform provides
+          Welcome to the LearnLedger API documentation and testing site. This platform provides
           all the tools you need to integrate with our blockchain-based project management system.
         </p>
         

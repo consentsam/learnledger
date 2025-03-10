@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>How to Use ProjectLedger API</title>
+  <title>How to Use LearnLedger API</title>
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -78,10 +78,10 @@
     <a href="how-to-use.html">How to Use</a>
   </nav>
 
-  <h1>How to Use ProjectLedger API</h1>
+  <h1>How to Use LearnLedger API</h1>
   
   <p>
-    This guide will help you integrate with the ProjectLedger API. The API allows you to manage projects, freelancer profiles, 
+    This guide will help you integrate with the LearnLedger API. The API allows you to manage projects, freelancer profiles, 
     submissions, and more through a simple RESTful interface.
   </p>
   
@@ -101,7 +101,7 @@
   
   <p>All API endpoints are relative to the base URL:</p>
   
-  <pre><code>https://api.projectledger.com/api</code></pre>
+  <pre><code>https://api.LearnLedger.com/api</code></pre>
   
   <p>For local development, use:</p>
   
@@ -124,7 +124,7 @@
   
   <div class="card example">
     <pre><code>// Using fetch in JavaScript
-fetch('https://api.projectledger.com/api/register', {
+fetch('https://api.LearnLedger.com/api/register', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json'
@@ -146,7 +146,7 @@ fetch('https://api.projectledger.com/api/register', {
   
   <div class="card example">
     <pre><code>// Using fetch in JavaScript
-fetch('https://api.projectledger.com/api/projects?status=open')
+fetch('https://api.LearnLedger.com/api/projects?status=open')
   .then(response => response.json())
   .then(data => console.log(data))
   .catch(error => console.error('Error:', error));</code></pre>
@@ -215,7 +215,7 @@ fetch('https://api.projectledger.com/api/projects?status=open')
   
   <ul>
     <li>Check the <a href="index.html">API Documentation</a> for detailed information about each endpoint</li>
-    <li>Contact our support team at support@projectledger.com</li>
+    <li>Contact our support team at support@LearnLedger.com</li>
   </ul>
 </body>
 </html> 

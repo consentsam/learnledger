@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'ProjectLedger API Documentation',
-  description: 'API documentation for the ProjectLedger platform',
+  title: 'LearnLedger API Documentation',
+  description: 'API documentation for the LearnLedger platform',
 };
 
 export default function ApiDocsLayout({

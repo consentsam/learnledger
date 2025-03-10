@@ -1,6 +1,6 @@
-# ProjectLedger API Documentation
+# LearnLedger API Documentation
 
-This documentation provides comprehensive details about all the APIs available in the ProjectLedger platform. It includes information about request/response formats, error codes, and example usage for frontend developers.
+This documentation provides comprehensive details about all the APIs available in the LearnLedger platform. It includes information about request/response formats, error codes, and example usage for frontend developers.
 
 ## Table of Contents
 
@@ -20,7 +20,7 @@ This documentation provides comprehensive details about all the APIs available i
 
 ## Overview
 
-The ProjectLedger API follows RESTful principles and uses standard HTTP methods:
+The LearnLedger API follows RESTful principles and uses standard HTTP methods:
 
 - `GET`: Retrieve resources
 - `POST`: Create new resources
@@ -29,7 +29,7 @@ The ProjectLedger API follows RESTful principles and uses standard HTTP methods:
 - `DELETE`: Remove resources
 
 Base URLs:
-- Production: `https://projectledger.vercel.app/api`
+- Production: `https://LearnLedger.vercel.app/api`
 - Development: `http://localhost:3000/api`
 
 ## Authentication

@@ -14,9 +14,9 @@ export async function GET(
     // If this is the root API path, return API documentation info
     if (!routePath) {
       return NextResponse.json({
-        name: "ProjectLedger API",
+        name: "LearnLedger API",
         version: "1.0.0",
-        description: "API for ProjectLedger - a blockchain-based project management platform",
+        description: "API for LearnLedger - a blockchain-based project management platform",
         status: {
           database: "CONNECTED" // We're not using mock database anymore
         },

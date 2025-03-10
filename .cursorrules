@@ -1,6 +1,6 @@
 Project Instructions
 
-Use this specification and these guidelines as you build the **ProjectLedger** MVP.
+Use this specification and these guidelines as you build the **LearnLedger** MVP.
 
 Use specification and guidelines as you build the app. Write the complete code for every step. Do not get lazy.Your goal is to **completely finish** whatever is asked.  
 When adding or modifying code, **show the complete code**—don’t just outline or pseudo-code.  
@@ -9,7 +9,7 @@ You will see references to tags and folder structure. These are context tags tha
 
 ## Overview
 
-This is a **web app template** for **ProjectLedger**.  
+This is a **web app template** for **LearnLedger**.  
 Tech stack for the MVP:  
 
 - **Frontend**: Next.js, Tailwind, Shadcn, Framer Motion  

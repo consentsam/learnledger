@@ -1,6 +1,6 @@
 # API Tests
 
-This directory contains tests for the ProjectLedger API endpoints. These tests verify that the API functions correctly after removing the EIP authentication.
+This directory contains tests for the LearnLedger API endpoints. These tests verify that the API functions correctly after removing the EIP authentication.
 
 ## Test Structure
 

@@ -1,6 +1,6 @@
-# ProjectLedger API Documentation
+# LearnLedger API Documentation
 
-This documentation provides comprehensive information about the ProjectLedger API.
+This documentation provides comprehensive information about the LearnLedger API.
 
 ## Interactive Documentation
 
@@ -17,7 +17,7 @@ The complete API specification is available as an OpenAPI 3.0 specification in t
 
 ## Base URLs
 
-- Production API: `https://projectledger.vercel.app/api`
+- Production API: `https://LearnLedger.vercel.app/api`
 - Development API: `http://localhost:3000/api`
 
 ## Authentication

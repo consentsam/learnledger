@@ -3,7 +3,7 @@
  * @file projects-schema.ts
  *
  * @description
- * Defines the "projects" table schema for ProjectLedger. Each project can have:
+ * Defines the "projects" table schema for LearnLedger. Each project can have:
  * - requiredSkills: A comma-separated list of skills that students must have to submit a PR
  * - completionSkills: A comma-separated list of skills that students gain upon completing this project
  *

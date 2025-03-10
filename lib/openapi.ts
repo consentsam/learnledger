@@ -5,18 +5,18 @@ export const apiSchema = createSwaggerSpec({
   definition: {
     openapi: '3.0.0',
     info: {
-      title: 'ProjectLedger API Documentation',
+      title: 'LearnLedger API Documentation',
       version: '1.0.0',
-      description: 'API documentation for the ProjectLedger platform',
+      description: 'API documentation for the LearnLedger platform',
       contact: {
         name: 'API Support',
-        email: 'support@projectledger.com',
+        email: 'support@LearnLedger.com',
       },
     },
     servers: [
       {
         url: process.env.NODE_ENV === 'production' 
-          ? process.env.NEXT_PUBLIC_API_URL || 'https://projectledger.vercel.app/api'
+          ? process.env.NEXT_PUBLIC_API_URL || 'https://LearnLedger.vercel.app/api'
           : 'http://localhost:3000/api',
         description: process.env.NODE_ENV === 'production' ? 'Production server' : 'Local development server',
       },

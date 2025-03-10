@@ -17,7 +17,7 @@ async function main() {
 
   // Create the EIP-712 domain and data
   const domain = {
-    name: 'ProjectLedger',
+    name: 'LearnLedger',
     version: '1',
     chainId: '1', // Default to Ethereum mainnet
     verifyingContract: '0x0000000000000000000000000000000000000000'

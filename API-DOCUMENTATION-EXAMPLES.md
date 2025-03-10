@@ -1,6 +1,6 @@
-# ProjectLedger API Examples for Frontend Developers
+# LearnLedger API Examples for Frontend Developers
 
-This document provides practical examples of how to use the ProjectLedger API in your frontend application. These examples use Fetch API and Axios, which are common methods for making HTTP requests in JavaScript applications.
+This document provides practical examples of how to use the LearnLedger API in your frontend application. These examples use Fetch API and Axios, which are common methods for making HTTP requests in JavaScript applications.
 
 ## Table of Contents
 
@@ -21,7 +21,7 @@ Start by setting up your base URL based on the environment:
 ```javascript
 // config.js
 const API_BASE_URL = process.env.NODE_ENV === 'production'
-  ? 'https://projectledger.vercel.app/api'
+  ? 'https://LearnLedger.vercel.app/api'
   : 'http://localhost:3000/api';
 
 export default API_BASE_URL;

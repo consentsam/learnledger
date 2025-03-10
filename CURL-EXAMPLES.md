@@ -1,6 +1,6 @@
-# ProjectLedger API - Curl Examples
+# LearnLedger API - Curl Examples
 
-This document provides curl command examples for using the ProjectLedger API.
+This document provides curl command examples for using the LearnLedger API.
 
 ## User Registration and Profile
 

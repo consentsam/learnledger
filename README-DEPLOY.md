@@ -1,6 +1,6 @@
 # Vercel Deployment Guide
 
-This guide explains how to deploy the ProjectLedger application to Vercel with proper SSL configuration for the DigitalOcean database.
+This guide explains how to deploy the LearnLedger application to Vercel with proper SSL configuration for the DigitalOcean database.
 
 ## Prerequisites
 

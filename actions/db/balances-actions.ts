@@ -3,7 +3,7 @@
  * @file balances-actions.ts
  *
  * @description
- * This file contains server-side actions to manage user balances in ProjectLedger.
+ * This file contains server-side actions to manage user balances in LearnLedger.
  * Specifically, it implements the `updateBalanceAction` function to increment or
  * decrement a user's off-chain token balance.
  *

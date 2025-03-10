@@ -217,7 +217,7 @@ export function NavBar() {
     <nav className="bg-gray-800 text-white p-4">
       <div className="container mx-auto flex justify-between items-center">
         <Link href="/" className="text-xl font-bold">
-          ProjectLedger
+          LearnLedger
         </Link>
         
         <div className="flex items-center space-x-4">
