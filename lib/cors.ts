@@ -5,6 +5,9 @@ const allowedOrigins = [
   'http://localhost:3000',
   'https://localhost:3000',
   // Add your production domains if needed
+  '*', // Allow all origins temporarily for development
+  // TODO: Replace the line above with your specific frontend production domains
+  // 'https://your-frontend-domain.com',
 ];
 
 type CorsOptions = {
@@ -46,12 +49,15 @@ export function addCorsHeaders(
   
   // Check if the origin is allowed or if we're in development
   const isAllowed = process.env.NODE_ENV === 'development' || 
-                   allowedOrigins.includes(origin) ||
-                   origin === ''; // Allow requests with no origin (like mobile apps or curl)
+                  allowedOrigins.includes(origin) ||
+                  allowedOrigins.includes('*') ||
+                  origin === ''; // Allow requests with no origin (like mobile apps or curl)
   
   if (isAllowed) {
     // Set CORS headers
-    res.headers.set('Access-Control-Allow-Origin', origin || '*');
+    // If wildcard is in allowed origins and the specific origin isn't, use wildcard
+    const allowedOrigin = allowedOrigins.includes('*') && !allowedOrigins.includes(origin) ? '*' : origin || '*';
+    res.headers.set('Access-Control-Allow-Origin', allowedOrigin);
     res.headers.set('Access-Control-Allow-Methods', allowedMethods.join(', '));
     res.headers.set('Access-Control-Allow-Headers', allowedHeaders.join(', '));
     
@@ -105,15 +111,28 @@ export function withCors(
       } = { ...defaultOptions, ...options };
       
       // Set CORS headers
-      response.headers.set('Access-Control-Allow-Origin', origin);
-      response.headers.set('Access-Control-Allow-Methods', allowedMethods.join(', '));
-      response.headers.set('Access-Control-Allow-Headers', allowedHeaders.join(', '));
-      
-      if (allowCredentials) {
-        response.headers.set('Access-Control-Allow-Credentials', 'true');
+      // Determine the appropriate Access-Control-Allow-Origin value
+      const isAllowed = process.env.NODE_ENV === 'development' || 
+                        allowedOrigins.includes(origin) ||
+                        allowedOrigins.includes('*') ||
+                        origin === '';
+                        
+      if (isAllowed) {
+        const allowedOrigin = allowedOrigins.includes('*') && !allowedOrigins.includes(origin) ? '*' : origin;
+        response.headers.set('Access-Control-Allow-Origin', allowedOrigin);
+        response.headers.set('Access-Control-Allow-Methods', allowedMethods.join(', '));
+        response.headers.set('Access-Control-Allow-Headers', allowedHeaders.join(', '));
+        
+        if (allowCredentials) {
+          response.headers.set('Access-Control-Allow-Credentials', 'true');
+        }
+        
+        return response;
       }
       
-      return response;
+      // If origin is not allowed, return 403 Forbidden
+      return new Response(null, { status: 403 });
+      
     }
     
     try {
