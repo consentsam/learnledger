@@ -40,6 +40,8 @@ interface ActionResult<T = any> {
  * For the "Create Project" workflow
  */
 interface CreateProjectParams {
+  projectOwner: string
+  walletEns: string
   walletAddress: string
   projectName: string
   projectDescription?: string
@@ -67,10 +69,10 @@ export async function createProjectAction(
   params: CreateProjectParams
 ): Promise<ActionResult> {
   try {
-    if (!params.walletAddress || !params.projectName) {
+    if (!params.walletEns || !params.projectName || !params.projectOwner || !params.walletAddress) {
       return {
         isSuccess: false,
-        message: 'Missing required fields: walletAddress or projectName',
+        message: 'Missing required fields: walletEns, projectName, projectOwner, or walletAddress',
       }
     }
 
@@ -100,11 +102,13 @@ export async function createProjectAction(
         projectName: params.projectName,
         projectDescription: params.projectDescription ?? '',
         prizeAmount: proposedPrize.toString(),
-        projectOwner: lowerCaseAddress,
+        projectStatus: 'open',
+        projectOwnerWalletEns: params.projectOwner,
+        projectOwnerWalletAddress: lowerCaseAddress,
         requiredSkills: params.requiredSkills || '',
         completionSkills: params.completionSkills || '',
         projectRepo: params.projectRepo || '',
-        projectStatus: 'open',
+        
         deadline: params.deadline ? new Date(params.deadline) : null,
       })
       .returning();

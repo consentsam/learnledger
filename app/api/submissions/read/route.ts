@@ -1,140 +1,270 @@
-// @ts-nocheck
-import { NextRequest } from 'next/server'
-import { eq, and, desc } from 'drizzle-orm'
+/****************************************************************************************
+ * File: /app/api/submissions/read/route.ts
+ * Relative path: /Users/sattu/Library/CloudStorage/Dropbox/blockchain/teachnook/api_for_fe/app/api/submissions/read/route.ts
+ *
+ * GET  /api/submissions/read
+ *    - Continues to support query: submissionId, projectId, freelancerAddress
+ * POST /api/submissions/read
+ *    - Enhanced to handle role=freelancer or role=company
+ *    - If freelancer => fetch all that belong to them
+ *    - If company => fetch all that belong to that company's projects
+ *    - If projectId is provided => further filter to that single project
+ ****************************************************************************************/
 
-import { db } from '@/db/db'
-import { projectSubmissionsTable } from '@/db/schema/project-submissions-schema'
-import { 
-  successResponse, 
-  errorResponse, 
+import { NextRequest } from 'next/server';
+import { eq, and, desc, sql } from 'drizzle-orm';
+
+import { db } from '@/db/db';
+import { projectSubmissionsTable } from '@/db/schema/project-submissions-schema';
+import { freelancerTable } from '@/db/schema/freelancer-schema';
+import { companyTable } from '@/db/schema/company-schema';
+import { projectsTable } from '@/db/schema/projects-schema';
+
+import {
+  successResponse,
+  errorResponse,
   serverErrorResponse,
-  logApiRequest 
-} from '@/app/api/api-utils'
-import { withCors } from '@/lib/cors'
+  logApiRequest,
+} from '@/app/api/api-utils';
+import { withCors } from '@/lib/cors';
 
 /**
  * GET /api/submissions/read
  * 
  * Query parameters:
- * - submissionId: string (optional) - if provided, fetch a single submission
- * - projectId: string (optional) - if provided, fetch submissions for a specific project
- * - freelancerAddress: string (optional) - if provided, fetch submissions for a specific freelancer
+ * - submissionId: string => if present, return that single submission
+ * - projectId: string => if present, filter by that project
+ * - freelancerAddress: string => if present, filter by that freelancer
  */
 async function getSubmissions(req: NextRequest) {
   try {
-    // Log the request
-    logApiRequest('GET', '/api/submissions/read', req.ip || 'unknown')
-    
-    const { searchParams } = new URL(req.url)
-    const submissionId = searchParams.get('submissionId')
-    const projectId = searchParams.get('projectId')
-    const freelancerAddress = searchParams.get('freelancerAddress')?.toLowerCase()
+    logApiRequest('GET', '/api/submissions/read', req.ip || 'unknown');
 
-    // If user provides a "submissionId", we fetch only that one:
+    const { searchParams } = new URL(req.url);
+    const submissionId = searchParams.get('submissionId') || '';
+    const projectId = searchParams.get('projectId') || '';
+    const freelancerAddress = searchParams.get('freelancerAddress') || '';
+
+    // 1) If user provides a "submissionId," return exactly that submission
     if (submissionId) {
-      const [submission] = await db
+      const [singleSub] = await db
         .select()
         .from(projectSubmissionsTable)
-        .where(eq(projectSubmissionsTable.id, submissionId))
-        .limit(1)
+        .where(eq(projectSubmissionsTable.submissionId, submissionId))
+        .limit(1);
 
-      if (!submission) {
-        return errorResponse('Submission not found', 404)
+      if (!singleSub) {
+        return errorResponse('Submission not found', 404);
       }
-      
-      // Create response with cache headers
-      const response = successResponse(submission)
-      response.headers.set('Cache-Control', 'public, max-age=60')
-      return response
-    } 
-    // If user provides projectId or freelancerAddress, filter accordingly
-    else if (projectId || freelancerAddress) {
-      const conditions = []
-      
+
+      return successResponse(singleSub);
+    }
+
+    // 2) If user provides projectId or freelancerAddress, filter accordingly
+    if (projectId || freelancerAddress) {
+      const conditions: any[] = [];
+
       if (projectId) {
-        conditions.push(eq(projectSubmissionsTable.projectId, projectId))
+        conditions.push(eq(projectSubmissionsTable.projectId, projectId));
       }
-      
+
       if (freelancerAddress) {
-        conditions.push(eq(projectSubmissionsTable.freelancerAddress, freelancerAddress))
+        conditions.push(
+          eq(projectSubmissionsTable.freelancerAddress, freelancerAddress.toLowerCase())
+        );
       }
-      
+
       const filteredSubs = await db
         .select()
         .from(projectSubmissionsTable)
         .where(and(...conditions))
-        .orderBy(desc(projectSubmissionsTable.createdAt))
-      
-      // Create response with cache headers
-      const response = successResponse(filteredSubs)
-      response.headers.set('Cache-Control', 'public, max-age=60')
-      return response
-    } 
-    // Otherwise, return all (with a reasonable limit)
-    else {
-      const allSubs = await db
-        .select()
-        .from(projectSubmissionsTable)
-        .orderBy(desc(projectSubmissionsTable.createdAt))
-        .limit(50)  // Add reasonable limit to prevent huge responses
+        .orderBy(desc(projectSubmissionsTable.createdAt));
 
-      // Create response with cache headers
-      const response = successResponse(allSubs)
-      response.headers.set('Cache-Control', 'public, max-age=60')
-      return response
+      return successResponse(filteredSubs);
     }
+
+    // 3) Otherwise, return all (with a limit of 50)
+    const allSubs = await db
+      .select()
+      .from(projectSubmissionsTable)
+      .orderBy(desc(projectSubmissionsTable.createdAt))
+      .limit(50);
+
+    return successResponse(allSubs);
   } catch (error) {
-    return serverErrorResponse(error)
+    console.error('[GET /api/submissions/read] =>', error);
+    return serverErrorResponse(error);
   }
 }
 
 /**
- * POST /api/submissions/read (legacy support)
- * Will call the GET method with the same parameters
+ * POST /api/submissions/read
+ * Body can contain:
+ * {
+ *   "role": "freelancer" | "company",
+ *   "walletEns": "string",       // mandatory
+ *   "walletAddress": "string",   // mandatory
+ *   "projectId": "uuid"          // optional
+ * }
+ *
+ * Logic:
+ * If role=freelancer => Return all submissions by that freelancer's walletAddress.
+ *    If projectId is provided => filter to that project only.
+ *
+ * If role=company => Return all submissions for the projects owned by that company (via walletEns or walletAddress).
+ *    If projectId is provided => only submissions for that single project (still must be owned by the company).
  */
-async function getSubmissionsPost(req: NextRequest, parsedBody?: any) {
+async function getSubmissionsPost(req: NextRequest) {
   try {
-    // Log the request
-    logApiRequest('POST', '/api/submissions/read', req.ip || 'unknown')
-    
-    // Use the parsed body passed from middleware
-    const body = parsedBody || {};
-    
-    // Create a URL object to build the query string
-    const url = new URL(req.url)
-    
-    if (body.submissionId) {
-      url.searchParams.set('submissionId', body.submissionId)
+    logApiRequest('POST', '/api/submissions/read', req.ip || 'unknown');
+
+    const body = await req.json().catch(() => ({}));
+
+    const { role, walletEns = '', walletAddress = '', projectId = '' } = body;
+
+    // Basic checks
+    if (!role || (role !== 'freelancer' && role !== 'company')) {
+      return errorResponse('Missing or invalid role (must be freelancer|company)', 400);
     }
-    
-    if (body.projectId) {
-      url.searchParams.set('projectId', body.projectId)
+    if (!walletEns || !walletAddress) {
+      return errorResponse('Must provide both walletEns and walletAddress', 400);
     }
-    
-    if (body.freelancerAddress) {
-      url.searchParams.set('freelancerAddress', body.freelancerAddress)
+
+    if (role === 'freelancer') {
+      // 1) find the freelancer by walletEns if possible
+      const lowerEns = walletEns.trim().toLowerCase();
+      let freelancerRow: any = null;
+
+      const [foundByEns] = await db
+        .select()
+        .from(freelancerTable)
+        .where(eq(freelancerTable.walletEns, lowerEns))
+        .limit(1);
+      freelancerRow = foundByEns || null;
+
+      if (!freelancerRow) {
+        // fallback: check walletAddress
+        const lowerAddr = walletAddress.toLowerCase();
+        const [foundByAddr] = await db
+          .select()
+          .from(freelancerTable)
+          .where(eq(freelancerTable.walletAddress, lowerAddr))
+          .limit(1);
+
+        freelancerRow = foundByAddr || null;
+      }
+
+      if (!freelancerRow) {
+        return errorResponse(`Freelancer profile not found for ENS=${walletEns}`, 404);
+      }
+
+      const finalFreelancerAddr = freelancerRow.walletAddress.toLowerCase();
+
+      // 2) Build conditions
+      const conditions: any[] = [eq(projectSubmissionsTable.freelancerAddress, finalFreelancerAddr)];
+      if (projectId) {
+        conditions.push(eq(projectSubmissionsTable.projectId, projectId));
+      }
+
+      // 3) Query submissions
+      const subs = await db
+        .select()
+        .from(projectSubmissionsTable)
+        .where(and(...conditions))
+        .orderBy(desc(projectSubmissionsTable.createdAt));
+
+      return successResponse(subs);
+    } else {
+      // role=company
+      // 1) find company by walletEns
+      const lowerEns = walletEns.trim().toLowerCase();
+      let companyRow: any = null;
+
+      const [foundByEns] = await db
+        .select()
+        .from(companyTable)
+        .where(eq(companyTable.walletEns, lowerEns))
+        .limit(1);
+      companyRow = foundByEns || null;
+
+      if (!companyRow) {
+        // fallback: check walletAddress
+        const lowerAddr = walletAddress.toLowerCase();
+        const [foundByAddr] = await db
+          .select()
+          .from(companyTable)
+          .where(eq(companyTable.walletAddress, lowerAddr))
+          .limit(1);
+
+        companyRow = foundByAddr || null;
+      }
+
+      if (!companyRow) {
+        return errorResponse(`Company profile not found for ENS=${walletEns}`, 404);
+      }
+
+      // 2) find all projects owned by that company
+      const finalCompanyWallet = companyRow.walletAddress.toLowerCase();
+
+      // If projectId is provided, we'll confirm that project is owned by this company
+      if (projectId) {
+        // 2a) find that specific project and check ownership
+        const [proj] = await db
+          .select()
+          .from(projectsTable)
+          .where(eq(projectsTable.projectId, projectId))
+          .limit(1);
+
+        if (!proj) {
+          return errorResponse(`Project not found: ${projectId}`, 404);
+        }
+        if (proj.projectOwner.toLowerCase() !== finalCompanyWallet) {
+          return errorResponse(
+            `Project ${projectId} is not owned by this company (walletEns=${walletEns})`,
+            403
+          );
+        }
+
+        // 2b) fetch submissions for that single project
+        const subs = await db
+          .select()
+          .from(projectSubmissionsTable)
+          .where(eq(projectSubmissionsTable.projectId, projectId))
+          .orderBy(desc(projectSubmissionsTable.createdAt));
+
+        return successResponse(subs);
+      } else {
+        // No single projectId => get all projects for this owner, then all submissions for those
+        const ownedProjects = await db
+          .select({
+            projectId: projectsTable.projectId
+          })
+          .from(projectsTable)
+          .where(eq(projectsTable.projectOwner, finalCompanyWallet));
+
+        if (ownedProjects.length === 0) {
+          // no projects => no submissions
+          return successResponse([]);
+        }
+
+        const projectIds = ownedProjects.map(p => p.projectId);
+        // inArray => condition for projectSubmissionsTable.projectId in (listOfIds)
+        const subs = await db
+          .select()
+          .from(projectSubmissionsTable)
+          .where(sql`${projectSubmissionsTable.projectId} IN (${projectIds.map(() => '?').join(',')})`.params(...projectIds))
+          .orderBy(desc(projectSubmissionsTable.createdAt));
+
+        return successResponse(subs);
+      }
     }
-    
-    // Create a custom request object to pass to GET
-    const getReq = {
-      ...req,
-      url: url.toString(),
-      method: 'GET',
-      nextUrl: url,
-    } as NextRequest;
-    
-    // Call the GET method
-    return getSubmissions(getReq)
   } catch (error) {
-    console.error('Submissions read error:', error);
-    return serverErrorResponse(error)
+    console.error('[POST /api/submissions/read] =>', error);
+    return serverErrorResponse(error);
   }
 }
 
-// Apply CORS to route handlers
+// Export with CORS
 export const GET = withCors(getSubmissions);
 export const POST = withCors(getSubmissionsPost);
-export const OPTIONS = withCors(async () => {
-  // Empty handler, the CORS middleware will create the proper OPTIONS response
-  return new Response(null, { status: 204 });
-});
+export const OPTIONS = withCors(async () => new Response(null, { status: 204 }));

@@ -9,46 +9,36 @@
  * `isMerged` field to indicate whether the submission's PR has been merged.
  */
 
-import { InferModel } from 'drizzle-orm'
-import { pgTable, uuid, text, timestamp, boolean } from 'drizzle-orm/pg-core'
+import { pgTable, text, timestamp, boolean } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
-export const projectSubmissionsTable = pgTable('project_submissions', {
-  id: uuid('id').defaultRandom().primaryKey(),
+/**
+ * Project Submissions Table
+ * Renamed `id` to `submissionId`.
+ * Added `projectOwner` and `projectRepo`.
+ */
+export const projectSubmissionsTable = pgTable("project_submissions", {
+  submissionId: text('submission_id').primaryKey(),
+  projectId: text("project_id"), // references projectsTable.projectId
+  projectOwner: text("project_owner"), // new column to store the owner from projects
+  projectRepo: text("project_repo"),   // new column to store the project repo
 
-  // The project to which this submission belongs
-  projectId: uuid('project_id').notNull(),
+  freelancerAddress: text("freelancer_address"),
+  prLink: text("pr_link"),
+  submissionText: text("submission_text"),
+  repoOwner: text("repo_owner"),
+  repoName: text("repo_name"),
+  prNumber: text("pr_number"),
+  isMerged: boolean("is_merged").default(false),
+  status: text("status").default("pending"),  // e.g. 'pending', 'approved', 'rejected'
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .default(sql`now()`)
+    .notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .default(sql`now()`)
+    .notNull(),
+});
 
-  // The freelancer's wallet address
-  freelancerAddress: text('freelancer_address').notNull(),
-
-  // The GitHub PR link (e.g. "https://github.com/owner/repo/pull/123")
-  prLink: text('pr_link').notNull(),
-
-  // OPTIONAL: extracted from prLink to facilitate matching the GH webhook
-  repoOwner: text('repo_owner').notNull(),  // e.g., "facebook"
-  repoName: text('repo_name').notNull(),    // e.g., "react"
-  prNumber: text('pr_number').notNull(),    // e.g., "123"
-
-  /**
-   * @field isMerged
-   * Indicates if this submission's PR was actually merged.
-   * Updated by GitHub webhook or manual logic if you want.
-   */
-  isMerged: boolean('is_merged').default(false).notNull(),
-
-  /**
-   * @field status
-   * Tracks the review status of the submission.
-   * Can be 'pending', 'approved', or 'rejected'.
-   */
-  status: text('status').default('pending').notNull(),
-
-  // Timestamp of last update
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-
-  // Timestamp of creation
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-})
-
-export type ProjectSubmission = InferModel<typeof projectSubmissionsTable>
-export type NewProjectSubmission = InferModel<typeof projectSubmissionsTable, 'insert'>
+// Maintain backward compatibility with existing code
+export type ProjectSubmission = typeof projectSubmissionsTable.$inferSelect
+export type NewProjectSubmission = typeof projectSubmissionsTable.$inferInsert

@@ -85,6 +85,20 @@
       "when": 1742628493595,
       "tag": "0011_easy_lorna_dane",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1742663915427,
+      "tag": "0012_bizarre_lady_mastermind",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1742666660593,
+      "tag": "0013_romantic_warhawk",
+      "breakpoints": true
     }
   ]
 }

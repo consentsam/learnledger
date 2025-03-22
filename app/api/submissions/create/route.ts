@@ -1,7 +1,36 @@
-// file: /app/api/submissions/create/route.ts
+/****************************************************************************************
+ * File: /app/api/submissions/create/route.ts
+ * 
+ * POST /api/submissions/create
+ * 
+ * @description
+ * Creates a new submission record for a project. We allow the client to specify
+ * either (A) walletEns, or (B) walletAddress for the freelancer. This route
+ * resolves the final freelancer wallet address and passes it to createSubmissionAction.
+ * 
+ * Expected Request Body:
+ * {
+ *   "projectId":        string,  // required
+ *   "walletEns":        string,  // optional if user has an ENS
+ *   "walletAddress":    string,  // optional if no ENS; fallback
+ *   "prLink":           string,  // optional but recommended
+ *   "submissionText":   string   // optional
+ * }
+ *
+ * The old code required "freelancerWallet", but we have removed that in favor
+ * of "walletEns" + "walletAddress" with a short DB lookup. 
+ *
+ * @returns
+ * 201 on success => { isSuccess: true, message: "Submission created successfully", data: {...} }
+ * 4xx on any validation or lookup failure
+ ****************************************************************************************/
 
-import { NextRequest } from 'next/server'
-import { createSubmissionAction } from '@/actions/db/submissions-actions'
+import { NextRequest, NextResponse } from 'next/server'
+import { withCors } from '@/lib/cors'
+import { db } from '@/db/db'
+import { freelancerTable } from '@/db/schema/freelancer-schema'
+import { eq } from 'drizzle-orm'
+
 import { 
   successResponse, 
   errorResponse, 
@@ -9,28 +38,17 @@ import {
   validateRequiredFields,
   logApiRequest 
 } from '@/app/api/api-utils'
-import { withCors } from '@/lib/cors'
+import { createSubmissionAction } from '@/actions/db/submissions-actions'
 
-/**
-  POST /api/submissions/create
-  Body:
-  {
-    "projectId": "string",
-    "freelancerWallet": "string",
-    "submissionText": "string",
-    "githubLink": "string"
-  }
-*/
-async function createSubmission(req: NextRequest, parsedBody?: any) {
+async function postCreateSubmission(req: NextRequest) {
   try {
-    // Log the request
     logApiRequest('POST', '/api/submissions/create', req.ip || 'unknown')
 
-    // Parse request body if not already parsed
-    const body = parsedBody || await req.json()
-
-    // Validate required fields
-    const validation = validateRequiredFields(body, ['projectId', 'freelancerWallet'])
+    const body = await req.json().catch(() => ({}))
+    
+    // 1) Validate required fields. 
+    //    We do NOT require 'freelancerWallet' anymore; we handle walletEns/walletAddress logic below.
+    const validation = validateRequiredFields(body, ['projectId'])
     if (!validation.isValid) {
       return errorResponse(
         `Missing required fields: ${validation.missingFields.join(', ')}`,
@@ -38,28 +56,74 @@ async function createSubmission(req: NextRequest, parsedBody?: any) {
       )
     }
 
-    // Optional: validate the format of 'freelancerWallet' or 'githubLink' if needed
-    // e.g. check 0x pattern, check GitHub URL pattern, etc.
+    // 2) Resolve final freelancer address from "walletEns" or "walletAddress"
+    const { projectId, walletEns = '', walletAddress = '', prLink, submissionText } = body
 
+    // Both are optional, but we must have at least one
+    if (!walletEns && !walletAddress) {
+      return errorResponse(
+        `Must provide at least one of [walletEns, walletAddress] to identify the freelancer`,
+        400
+      )
+    }
+
+    let finalFreelancerAddress = ''
+    // Try ENS first
+    if (walletEns) {
+      const lowerEns = walletEns.trim().toLowerCase()
+      // find freelancer by that ENS
+      const [byEns] = await db
+        .select()
+        .from(freelancerTable)
+        .where(eq(freelancerTable.walletEns, lowerEns))
+        .limit(1)
+      if (!byEns) {
+        return errorResponse(
+          `No freelancer found for walletEns='${walletEns}'`,
+          404
+        )
+      }
+      finalFreelancerAddress = byEns.walletAddress.toLowerCase()
+    }
+    // If still empty, fallback to walletAddress
+    if (!finalFreelancerAddress && walletAddress) {
+      if (!/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
+        return errorResponse(`Invalid walletAddress format: ${walletAddress}`, 400)
+      }
+      finalFreelancerAddress = walletAddress.trim().toLowerCase()
+    }
+
+    if (!finalFreelancerAddress) {
+      return errorResponse(`Could not resolve freelancer address`, 400)
+    }
+
+    // 3) Call the createSubmissionAction with the final wallet
     const result = await createSubmissionAction({
-      projectId: body.projectId,
-      freelancerWallet: body.freelancerWallet,
-      submissionText: body.submissionText,
-      githubLink: body.githubLink,
+      projectId,
+      freelancerWallet: finalFreelancerAddress,
+      submissionText,
+      githubLink: prLink
     })
 
     if (!result.isSuccess) {
-      return errorResponse(result.message || 'Failed to create submission', 400)
+      return errorResponse(result.message, 400)
     }
 
-    return successResponse(result.data, 'Submission created successfully', 201)
-  } catch (error) {
-    console.error('Submission creation error:', error)
+    // 4) Return success (HTTP 201)
+    return successResponse(
+      result.data, 
+      'Submission created successfully', 
+      201
+    )
+  } catch (error: any) {
+    console.error('[POST /api/submissions/create] Unhandled error =>', error)
     return serverErrorResponse(error)
   }
 }
 
-export const POST = withCors(createSubmission)
+export const POST = withCors(postCreateSubmission)
+
+// For CORS preflight
 export const OPTIONS = withCors(async () => {
   return new Response(null, { status: 204 })
 })

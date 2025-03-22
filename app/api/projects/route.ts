@@ -181,7 +181,7 @@ async function postProjectsHandler(req: NextRequest) {
       logApiRequest('POST', '/api/projects => createProject', req.ip || 'unknown')
 
       // Validate required fields for creation
-      const validation = validateRequiredFields(body, ['projectName', 'projectOwner'])
+      const validation = validateRequiredFields(body, ['walletAddress', 'walletEns', 'projectName', 'projectOwner'])
       if (!validation.isValid) {
         return errorResponse(
           `Missing required fields: ${validation.missingFields.join(', ')}`,
@@ -195,7 +195,8 @@ async function postProjectsHandler(req: NextRequest) {
 
       // We call the existing createProjectAction
       const result = await createProjectAction({
-        walletAddress: body.walletAddress || body.projectOwner, // support both formats
+        walletEns: body.walletEns || body.projectOwner, // prioritize walletEns, fallback to walletAddress or projectOwner
+        walletAddress: body.walletAddress,
         projectName: body.projectName,
         projectDescription: body.projectDescription,
         projectRepo: body.projectRepo || body.projectLink,
@@ -205,6 +206,7 @@ async function postProjectsHandler(req: NextRequest) {
           : (body.requiredSkills || ''),
         completionSkills: body.completionSkills,
         deadline: body.deadline, // Pass through as is - validation happens in createProjectAction
+        projectOwner: body.projectOwner,
       })
 
       if (!result.isSuccess) {
