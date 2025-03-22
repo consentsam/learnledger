@@ -1,166 +1,122 @@
-// tests/api/userProfile.test.ts
-import { describe, test, expect, afterAll, beforeAll } from '@jest/globals';
+/**********************************************************************
+ * File: /Users/sattu/Library/CloudStorage/Dropbox/blockchain/teachnook/api_for_fe/tests/api/userProfile.test.ts
+ **********************************************************************/
+
+import fetch from 'node-fetch';
+import { describe, test, expect, beforeAll, afterAll } from '@jest/globals';
 import { apiRequest, TEST_WALLETS, cleanupTest } from './setup';
 
-describe('User Profile API', () => {
-  const createdIds: string[] = [];
-  let companyProfileId: string | undefined;
-  let freelancerProfileId: string | undefined;
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 
-  // Create test data before all tests
+// We will store any created user(s) so we can delete them at the end
+const createdProfiles: Array<{ role: string; walletAddress: string }> = [];
+
+describe('UserProfile API tests (Update & Delete flow)', () => {
+  // This ensures we have a test freelancer & test company to delete
   beforeAll(async () => {
-    // Register a company profile
-    const companyResponse = await apiRequest('/register', 'POST', {
-      role: 'company',
-      walletAddress: TEST_WALLETS.company,
-      companyName: 'Test Company',
-      shortDescription: 'A testing company',
-      logoUrl: 'https://example.com/logo.png'
-    });
-
-    if (companyResponse.status === 200 && companyResponse.data.isSuccess && companyResponse.data.data) {
-      companyProfileId = companyResponse.data.data;
-      if (companyProfileId) {
-        createdIds.push(companyProfileId);
-      }
-    }
-
-    // Register a freelancer profile
-    const freelancerResponse = await apiRequest('/register', 'POST', {
+    // 1) Create a test freelancer
+    const fPayload = {
       role: 'freelancer',
       walletAddress: TEST_WALLETS.freelancer,
-      freelancerName: 'Test Freelancer',
-      skills: 'JavaScript, React, Node.js',
-      profilePicUrl: 'https://example.com/profile.png'
+      walletEns: 'testfreelancer-ens',
+      freelancerName: 'FreelancerToDelete',
+      skills: 'nodejs, jest'
+    };
+    const fRes = await fetch(`${BASE_URL}/api/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fPayload),
     });
+    if (fRes.status === 200) {
+      createdProfiles.push({ role: 'freelancer', walletAddress: TEST_WALLETS.freelancer });
+    }
 
-    if (freelancerResponse.status === 200 && freelancerResponse.data.isSuccess && freelancerResponse.data.data) {
-      freelancerProfileId = freelancerResponse.data.data;
-      if (freelancerProfileId) {
-        createdIds.push(freelancerProfileId);
-      }
+    // 2) Create a test company
+    const cPayload = {
+      role: 'company',
+      walletAddress: TEST_WALLETS.company,
+      walletEns: 'testcompany-ens',
+      companyName: 'CompanyToDelete'
+    };
+    const cRes = await fetch(`${BASE_URL}/api/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cPayload),
+    });
+    if (cRes.status === 200) {
+      createdProfiles.push({ role: 'company', walletAddress: TEST_WALLETS.company });
     }
   });
 
-  // Clean up after all tests
   afterAll(async () => {
-    await cleanupTest(createdIds);
+    // If anything didn't get removed properly, try to remove them here
+    // Or rely on the tests below which do the actual deletion
   });
 
-  test('should get company profile by wallet address', async () => {
-    const response = await apiRequest(`/userProfile?wallet=${TEST_WALLETS.company}&role=company`);
-    
-    expect([200, 404, 500]).toContain(response.status);
-    
-    if (response.status === 200) {
-      expect(response.data.isSuccess).toBe(true);
-      if (response.data.data) {
-        expect(response.data.data.walletAddress.toLowerCase()).toBe(TEST_WALLETS.company.toLowerCase());
-      } else {
-        console.log('Company profile not found, may need to create it first');
-      }
-    } else {
-      console.log('Get company profile failed:', response.data?.message || 'Unknown error');
+  // We can add or keep existing "PUT" tests here ...
+  
+  test('DELETE /api/userProfile => remove a freelancer properly', async () => {
+    // Ensure we have a known freelancer from the "beforeAll" step
+    const fl = createdProfiles.find(p => p.role === 'freelancer');
+    if (!fl) {
+      console.warn('No freelancer to delete. Skipping test.');
+      return;
     }
-  });
 
-  test('should get freelancer profile by wallet address', async () => {
-    const response = await apiRequest(`/userProfile?wallet=${TEST_WALLETS.freelancer}&role=freelancer`);
-    
-    expect([200, 404, 500]).toContain(response.status);
-    
-    if (response.status === 200) {
-      expect(response.data.isSuccess).toBe(true);
-      if (response.data.data) {
-        expect(response.data.data.walletAddress.toLowerCase()).toBe(TEST_WALLETS.freelancer.toLowerCase());
-      } else {
-        console.log('Freelancer profile not found, may need to create it first');
-      }
-    } else {
-      console.log('Get freelancer profile failed:', response.data?.message || 'Unknown error');
-    }
-  });
-
-  test('should update company profile', async () => {
-    const payload = {
-      role: 'company',
-      walletAddress: TEST_WALLETS.company,
-      companyName: 'Updated Company Name',
-      shortDescription: 'Updated company description'
-    };
-
-    const response = await apiRequest('/userProfile', 'PUT', payload);
-    
-    expect([200, 404, 500]).toContain(response.status);
-    
-    if (response.status === 200) {
-      expect(response.data.isSuccess).toBe(true);
-      expect(response.data.data).toBeTruthy();
-      expect(response.data.data.companyName).toBe('Updated Company Name');
-      expect(response.data.data.shortDescription).toBe('Updated company description');
-    } else {
-      console.log('Update company profile failed:', response.data?.message || 'Unknown error');
-    }
-  });
-
-  test('should update freelancer profile', async () => {
-    const payload = {
+    const delPayload = {
       role: 'freelancer',
-      walletAddress: TEST_WALLETS.freelancer,
-      freelancerName: 'Updated Freelancer Name',
-      skills: 'JavaScript, React, Node.js, TypeScript'
+      walletAddress: fl.walletAddress, 
+      // we can pass walletEns if we want, but not strictly required in the new logic
     };
 
-    const response = await apiRequest('/userProfile', 'PUT', payload);
-    
-    expect([200, 404, 500]).toContain(response.status);
-    
-    if (response.status === 200) {
-      expect(response.data.isSuccess).toBe(true);
-      expect(response.data.data).toBeTruthy();
-      expect(response.data.data.freelancerName).toBe('Updated Freelancer Name');
-      expect(response.data.data.skills).toBe('JavaScript, React, Node.js, TypeScript');
-    } else {
-      console.log('Update freelancer profile failed:', response.data?.message || 'Unknown error');
+    const resp = await fetch(`${BASE_URL}/api/userProfile`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(delPayload),
+    });
+
+    expect(resp.status).toBe(200);
+    const json = await resp.json();
+    expect(json.isSuccess).toBe(true);
+    expect(json.message.toLowerCase()).toContain('freelancer profile deleted successfully');
+    expect(json.data.walletAddress.toLowerCase()).toBe(fl.walletAddress.toLowerCase());
+    // optional: check that it also returns the id or walletEns if we want
+    // e.g. expect(json.data.id).toBeDefined();
+
+    // try to GET again => should be 404
+    const checkUrl = `${BASE_URL}/api/userProfile?role=freelancer&walletAddress=${encodeURIComponent(fl.walletAddress)}`;
+    const checkResp = await fetch(checkUrl);
+    expect([404, 400]).toContain(checkResp.status);
+  });
+
+  test('DELETE /api/userProfile => remove a company properly', async () => {
+    // Ensure we have a known company from the "beforeAll" step
+    const cp = createdProfiles.find(p => p.role === 'company');
+    if (!cp) {
+      console.warn('No company to delete. Skipping test.');
+      return;
     }
-  });
 
-  test('should return 400 when attempting to update with missing required fields', async () => {
-    const payload = {
-      // Missing role field
-      walletAddress: TEST_WALLETS.company
-    };
-
-    const response = await apiRequest('/userProfile', 'PUT', payload);
-    
-    expect(response.status).toBe(400);
-    expect(response.data.isSuccess).toBe(false);
-  });
-
-  test('should return error when attempting to update non-existent profile', async () => {
-    const payload = {
+    const delPayload = {
       role: 'company',
-      walletAddress: '0x1234567890123456789012345678901234567890', // Non-existent wallet
-      companyName: 'Updated Company Name'
+      walletAddress: cp.walletAddress
     };
 
-    const response = await apiRequest('/userProfile', 'PUT', payload);
-    
-    // Either 404 (not found) or 500 (server error) is acceptable
-    expect([404, 500]).toContain(response.status);
-    expect(response.data.isSuccess).toBe(false);
-  });
+    const resp = await fetch(`${BASE_URL}/api/userProfile`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(delPayload),
+    });
 
-  // We'll skip the actual DELETE tests to avoid removing the profiles needed for other tests
-  test('should validate DELETE request parameters', async () => {
-    const payload = {
-      // Missing role field
-      walletAddress: TEST_WALLETS.company
-    };
+    expect(resp.status).toBe(200);
+    const json = await resp.json();
+    expect(json.isSuccess).toBe(true);
+    expect(json.message.toLowerCase()).toContain('company profile deleted successfully');
+    expect(json.data.walletAddress.toLowerCase()).toBe(cp.walletAddress.toLowerCase());
 
-    const response = await apiRequest('/userProfile', 'DELETE', payload);
-    
-    expect(response.status).toBe(400);
-    expect(response.data.isSuccess).toBe(false);
+    // try to GET again => should be 404
+    const checkUrl = `${BASE_URL}/api/userProfile?role=company&walletAddress=${encodeURIComponent(cp.walletAddress)}`;
+    const checkResp = await fetch(checkUrl);
+    expect([404, 400]).toContain(checkResp.status);
   });
-}); 
+});

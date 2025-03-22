@@ -1,3 +1,5 @@
+// file: /app/api/submissions/approve/route.ts
+
 import { NextRequest, NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
 
@@ -11,22 +13,22 @@ import { projectsTable } from '@/db/schema/projects-schema'
  * Body:
  * {
  *   "submissionId": string,
- *   "walletAddress": string  // must match projectOwner
+ *   "companyWallet": string  // must match the project owner
  * }
  */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { submissionId, walletAddress } = body
+    const { submissionId, companyWallet } = body
 
-    if (!submissionId || !walletAddress) {
+    if (!submissionId || !companyWallet) {
       return NextResponse.json(
-        { isSuccess: false, message: 'Missing submissionId or walletAddress' },
+        { isSuccess: false, message: 'Missing submissionId or companyWallet' },
         { status: 400 }
       )
     }
 
-    // 1) Fetch submission
+    // 1) Fetch the submission
     const [submission] = await db
       .select()
       .from(projectSubmissionsTable)
@@ -40,46 +42,11 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // 2) Fetch project
-    const [project] = await db
-      .select()
-      .from(projectsTable)
-      .where(eq(projectsTable.id, submission.projectId))
-      .limit(1)
-    if (!project) {
-      return NextResponse.json(
-        { isSuccess: false, message: 'Project not found' },
-        { status: 404 }
-      )
-    }
-
-    // 3) Must match projectOwner
-    if (project.projectOwner.toLowerCase() !== walletAddress.toLowerCase()) {
-      return NextResponse.json(
-        { isSuccess: false, message: 'Only the project owner can approve' },
-        { status: 403 }
-      )
-    }
-
-    // 4) Check if already closed or merged
-    if (project.projectStatus === 'closed') {
-      return NextResponse.json(
-        { isSuccess: false, message: 'Project is already closed.' },
-        { status: 400 }
-      )
-    }
-    if (submission.isMerged) {
-      return NextResponse.json(
-        { isSuccess: false, message: 'Submission is already merged/approved.' },
-        { status: 400 }
-      )
-    }
-
-    // 5) Do the approval (awards tokens & skills, closes project)
+    // 2) Approve
     const result = await approveSubmissionAction({
-      projectId: project.id,
-      freelancerAddress: submission.freelancerAddress,
-      walletAddress: walletAddress,
+      projectId: submission.projectId,
+      freelancerAddress: submission.freelancerAddress, // keep internal name
+      companyWallet: companyWallet
     })
 
     if (!result.isSuccess) {
@@ -89,7 +56,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // 6) Mark submission as isMerged = true
+    // 3) Mark submission as merged
     await db
       .update(projectSubmissionsTable)
       .set({ isMerged: true })
@@ -100,7 +67,7 @@ export async function POST(req: NextRequest) {
       { status: 200 }
     )
   } catch (error) {
-    console.error('Error [POST /api/submissions/approve]:', error)
+    console.error('[POST /api/submissions/approve] Error:', error)
     return NextResponse.json(
       { isSuccess: false, message: 'Internal server error' },
       { status: 500 }

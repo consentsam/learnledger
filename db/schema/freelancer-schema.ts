@@ -9,21 +9,23 @@ import { pgTable, uuid, text, timestamp } from 'drizzle-orm/pg-core'
  */
 export const freelancerTable = pgTable('freelancer', {
   id: uuid('id').defaultRandom().primaryKey(),
-  walletAddress: text('wallet_address').notNull(),
-
+  walletAddress: text('walletAddress').notNull(),
+  walletEns: text('walletEns'),
+  
   // The "freelancer name" or public name
-  freelancerName: text('freelancer_name').notNull(),
+  freelancerName: text('freelancerName'),
 
   // For storing their skillset (comma-separated or free text for MVP)
   skills: text('skills'),
 
   // An optional profile pic
-  profilePicUrl: text('profile_pic_url'),
+  profilePicUrl: text('profilePicUrl'),
+  
+  // GitHub profile
+  githubProfileUsername: text('githubProfileUsername'),
 
-  // Possibly more fields if needed
-
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at')
+  createdAt: timestamp('createdAt').defaultNow().notNull(),
+  updatedAt: timestamp('updatedAt')
     .defaultNow()
     .notNull()
     .$onUpdate(() => new Date()),

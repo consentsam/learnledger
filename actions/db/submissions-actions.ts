@@ -17,27 +17,39 @@ interface ActionResult<T=any> {
 
 /**
  * createSubmissionAction => used by POST /api/submissions/create
+ * POST body in Postman:
+ * {
+ *   "projectId": "string",
+ *   "freelancerWallet": "string",
+ *   "submissionText": "string",
+ *   "githubLink": "string"
+ * }
  */
 export async function createSubmissionAction(params: {
   projectId: string
-  freelancerAddress: string
-  prLink: string
+  freelancerWallet: string
+  submissionText?: string
+  githubLink?: string
 }): Promise<ActionResult> {
   try {
     // Validate input
-    if (!params.projectId || !params.freelancerAddress || !params.prLink) {
-      return { isSuccess: false, message: 'Missing fields' }
+    if (!params.projectId || !params.freelancerWallet) {
+      return { isSuccess: false, message: 'Missing required fields: projectId or freelancerWallet' }
     }
 
     // 1) Check that project is open & not the same user as owner
-    const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, params.projectId)).limit(1)
+    const [project] = await db
+      .select()
+      .from(projectsTable)
+      .where(eq(projectsTable.id, params.projectId))
+      .limit(1)
     if (!project) {
       return { isSuccess: false, message: 'Project not found' }
     }
     if (project.projectStatus !== 'open') {
       return { isSuccess: false, message: 'Project is closed. Cannot submit.' }
     }
-    if (project.projectOwner.toLowerCase() === params.freelancerAddress.toLowerCase()) {
+    if (project.projectOwner.toLowerCase() === params.freelancerWallet.toLowerCase()) {
       return { isSuccess: false, message: 'Owner cannot submit to own project.' }
     }
 
@@ -45,7 +57,7 @@ export async function createSubmissionAction(params: {
     const reqSkillsStr = project.requiredSkills?.trim() || ''
     if (reqSkillsStr) {
       const requiredSkillNames = reqSkillsStr.split(',').map(s => s.trim()).filter(Boolean)
-      const userSkills = await fetchUserSkillsAction(params.freelancerAddress.toLowerCase())
+      const userSkills = await fetchUserSkillsAction(params.freelancerWallet.toLowerCase())
       if (!userSkills.isSuccess) {
         return { isSuccess: false, message: `Failed to fetch user skills: ${userSkills.message}` }
       }
@@ -57,16 +69,17 @@ export async function createSubmissionAction(params: {
         }
       }
     }
+    console.log("Did the code reach here?");
 
     // 3) Insert row in projectSubmissionsTable
     const insertResult = await db.insert(projectSubmissionsTable).values({
       projectId: params.projectId,
-      freelancerAddress: params.freelancerAddress.toLowerCase(),
-      prLink: params.prLink,
-      // for GitHub synergy
-      repoOwner: extractRepoOwner(params.prLink),
-      repoName: extractRepoName(params.prLink),
-      prNumber: extractPrNumber(params.prLink),
+      freelancerAddress: params.freelancerWallet.toLowerCase(),
+      prLink: params.githubLink ?? '',
+      submissionText: params.submissionText ?? '',
+      repoOwner: extractRepoOwner(params.githubLink || ''),
+      repoName: extractRepoName(params.githubLink || ''),
+      prNumber: extractPrNumber(params.githubLink || ''),
     }).returning()
 
     return { isSuccess: true, message: 'Submission created', data: insertResult[0] }
@@ -77,21 +90,21 @@ export async function createSubmissionAction(params: {
 }
 
 // Example helpers
-function extractRepoOwner(prLink: string): string {
+function extractRepoOwner(githubLink: string): string {
   try {
-    const parts = new URL(prLink).pathname.split('/')
+    const parts = new URL(githubLink).pathname.split('/')
     return parts[1] || 'unknown'
   } catch { return 'unknown' }
 }
-function extractRepoName(prLink: string): string {
+function extractRepoName(githubLink: string): string {
   try {
-    const parts = new URL(prLink).pathname.split('/')
+    const parts = new URL(githubLink).pathname.split('/')
     return parts[2] || 'unknown'
   } catch { return 'unknown' }
 }
-function extractPrNumber(prLink: string): string {
+function extractPrNumber(githubLink: string): string {
   try {
-    const parts = new URL(prLink).pathname.split('/')
+    const parts = new URL(githubLink).pathname.split('/')
     if (parts[3] === 'pull') {
       return parts[4] || '0'
     }

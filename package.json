@@ -9,7 +9,7 @@
     "build": "DISABLE_TYPESCRIPT_TYPECHECK=true NEXT_PUBLIC_SKIP_API_ROUTES=true next build --no-lint",
     "start": "next start",
     "lint": "next lint",
-    "test": "jest",
+    "test": "jest --runInBand",
     "test:watch": "jest --watch",
     "test:api": "jest tests/api",
     "generate-wallets": "node tests/generate-wallets.js",

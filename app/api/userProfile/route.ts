@@ -1,231 +1,497 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { eq } from 'drizzle-orm'
+/**********************************************************************
+ * File: /Users/sattu/Library/CloudStorage/Dropbox/blockchain/teachnook/api_for_fe/app/api/userProfile/route.ts
+ **********************************************************************/
+import { NextRequest, NextResponse } from 'next/server';
+import { eq } from 'drizzle-orm';
 
-import { getUserProfileAction } from '@/actions/db/user-profile-actions'
-import { 
-  successResponse, 
-  errorResponse, 
+import { db } from '@/db/db';
+import { companyTable } from '@/db/schema/company-schema';
+import { freelancerTable } from '@/db/schema/freelancer-schema';
+import { userBalancesTable } from '@/db/schema/user-balances-schema';
+import { userSkillsTable } from '@/db/schema/user-skills-schema';
+import { projectSubmissionsTable } from '@/db/schema/project-submissions-schema';
+
+import {
+  successResponse,
+  errorResponse,
   serverErrorResponse,
   validateRequiredFields,
-  logApiRequest 
-} from '@/app/api/api-utils'
-import { withCors } from '@/lib/cors'
-import { withValidation, rules } from '@/lib/middleware/validation'
+  logApiRequest,
+} from '@/app/api/api-utils';
 
-import { db } from '@/db/db'
-import { companyTable } from '@/db/schema/company-schema'
-import { freelancerTable } from '@/db/schema/freelancer-schema'
+import { withCors } from '@/lib/cors';
 
-// Force this API route to be dynamic
-export const dynamic = 'force-dynamic';
+/** 
+ * Utility to format the final response for either freelancer or company,
+ * matching the requested output structure.
+ * This is used for both CREATE/UPDATE so that the response matches the 
+ * "Successfully registered profile" schema exactly as requested.
+ */
+function formatProfileResponse(role: 'freelancer' | 'company', row: any) {
+  if (role === 'freelancer') {
+    return {
+      id: row.id,
+      walletEns: row.walletEns,
+      walletAddress: row.walletAddress,
+      freelancerName: row.freelancerName,
+      skills: row.skills,
+      profilePicUrl: row.profilePicUrl,
+      githubProfileUsername: row.githubProfileUsername,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  } else {
+    // role = company
+    return {
+      id: row.id,
+      walletEns: row.walletEns,
+      walletAddress: row.walletAddress,
+      companyName: row.companyName,
+      shortDescription: row.shortDescription,
+      logoUrl: row.logoUrl,
+      githubProfileUsername: row.githubProfileUsername,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  }
+}
 
 /**
- * GET /api/userProfile?wallet=0x...&role=company|freelancer
+ * GET /api/userProfile?role=freelancer|company &walletAddress=... or &walletEns=...
+ * Fetches a user profile (freelancer or company).
  */
 async function getUserProfile(req: NextRequest) {
   try {
-    logApiRequest('GET', '/api/userProfile', req.ip || 'unknown')
+    logApiRequest('GET', '/api/userProfile', req.ip || 'unknown');
     
-    const { searchParams } = new URL(req.url)
-    const wallet = searchParams.get('wallet')?.toLowerCase()
-    const role = searchParams.get('role')
+    const url = new URL(req.url);
+    const role = (url.searchParams.get('role') || '').toLowerCase();
+    const walletAddress = (url.searchParams.get('walletAddress') || '').toLowerCase().trim();
+    const walletEns = (url.searchParams.get('walletEns') || '').toLowerCase().trim();
 
-    if (!wallet || !role) {
+    if (!role || (role !== 'freelancer' && role !== 'company')) {
       return errorResponse(
-        'Missing required query parameters: wallet and role',
+        'Missing or invalid `role` query param (must be freelancer|company)',
         400
-      )
+      );
+    }
+    if (!walletAddress && !walletEns) {
+      return errorResponse(
+        'Missing at least one of: `walletAddress` or `walletEns`',
+        400
+      );
     }
 
-    if (!wallet.match(/^0x[a-fA-F0-9]{40}$/)) {
-      return errorResponse('Invalid wallet address format', 400)
+    let row: any = null;
+
+    if (role === 'company') {
+      // Try by walletEns first, else by walletAddress
+      if (walletEns) {
+        const [resByEns] = await db
+          .select()
+          .from(companyTable)
+          .where(eq(companyTable.walletEns, walletEns))
+          .limit(1);
+        row = resByEns || null;
+      }
+      if (!row && walletAddress) {
+        const [resByAddr] = await db
+          .select()
+          .from(companyTable)
+          .where(eq(companyTable.walletAddress, walletAddress))
+          .limit(1);
+        row = resByAddr || null;
+      }
+    } else {
+      // freelancer
+      if (walletEns) {
+        const [resFEns] = await db
+          .select()
+          .from(freelancerTable)
+          .where(eq(freelancerTable.walletEns, walletEns))
+          .limit(1);
+        row = resFEns || null;
+      }
+      if (!row && walletAddress) {
+        const [resFAddr] = await db
+          .select()
+          .from(freelancerTable)
+          .where(eq(freelancerTable.walletAddress, walletAddress))
+          .limit(1);
+        row = resFAddr || null;
+      }
     }
 
-    if (role !== 'company' && role !== 'freelancer') {
-      return errorResponse('Role must be either "company" or "freelancer"', 400)
+    if (!row) {
+      return errorResponse(`${role} profile not found`, 404);
     }
 
-    const result = await getUserProfileAction({
-      walletAddress: wallet,
-      role: role as 'company' | 'freelancer',
-    })
-
-    const response = successResponse(result.data, undefined, 200);
-    response.headers.set('Cache-Control', 'public, max-age=300');
-    return response;
+    return successResponse(formatProfileResponse(role, row));
   } catch (error) {
+    console.error('[GET /api/userProfile] error =>', error);
     return serverErrorResponse(error);
   }
 }
 
-const updateUserProfileValidationSchema = {
-  body: {
-    role: [
-      rules.required('role'),
-      rules.isValidRole('role'),
-    ],
-    walletAddress: [
-      rules.required('walletAddress'),
-      rules.isWalletAddress('walletAddress'),
-    ],
-  },
-};
-
-async function updateUserProfile(req: NextRequest, parsedBody?: any) {
+/**
+ * PUT /api/userProfile
+ * Body:
+ * {
+ *   "role": "freelancer" | "company",
+ *   "walletEns": "consentsam",
+ *   "walletAddress": "0xa1a7efeb3841....",
+ *   // FREELANCER fields
+ *   "freelancerName": "...",
+ *   "skills": "...",
+ *   "profilePicUrl": "...",
+ *   "githubProfileUsername": "...",
+ *
+ *   // COMPANY fields
+ *   "companyName": "...",
+ *   "shortDescription": "...",
+ *   "logoUrl": "...",
+ *   "githubProfileUsername": "...",
+ * }
+ *
+ * Conditions/validations:
+ * - role is required
+ * - walletEns is required (since user wants it as "primary" for uniqueness)
+ * - walletAddress is also required
+ * - We'll first find the existing profile by walletEns. If not found => 404.
+ * - Then update. Return the response in the exact "creation-like" format requested.
+ */
+async function updateUserProfile(req: NextRequest) {
   try {
-    logApiRequest('PUT', '/api/userProfile', req.ip || 'unknown')
-    const body = parsedBody || await req.json();
+    logApiRequest('PUT', '/api/userProfile', req.ip || 'unknown');
 
-    const validation = validateRequiredFields(body, ['role', 'walletAddress'])
-    if (!validation.isValid) {
+    const body = await req.json();
+
+    // Validate required fields
+    const v = validateRequiredFields(body, ['role', 'walletEns', 'walletAddress']);
+    if (!v.isValid) {
       return errorResponse(
-        `Missing required fields: ${validation.missingFields.join(', ')}`,
+        `Missing required fields: ${v.missingFields.join(', ')}`,
         400
-      )
+      );
     }
-    if (body.role !== 'company' && body.role !== 'freelancer') {
-      return errorResponse('Role must be either "company" or "freelancer"', 400)
+
+    const role = (body.role || '').toLowerCase().trim();
+    if (role !== 'freelancer' && role !== 'company') {
+      return errorResponse('Invalid role (must be freelancer or company)', 400);
     }
-    if (!body.walletAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
-      return errorResponse('Invalid wallet address format', 400)
-    }
-    
-    const lowerWallet = body.walletAddress.toLowerCase()
 
-    if (body.role === 'company') {
-      const [existing] = await db
-        .select()
-        .from(companyTable)
-        .where(eq(companyTable.walletAddress, lowerWallet))
+    const walletEns = (body.walletEns || '').toLowerCase().trim();
+    const walletAddress = (body.walletAddress || '').toLowerCase().trim();
 
-      if (!existing) {
-        return errorResponse('No matching company profile found', 404)
-      }
+    // 1) find the existing row by walletEns
+    let existing: any = null;
 
-      const updateData: Record<string, any> = {}
-      if (typeof body.companyName === 'string') {
-        updateData.companyName = body.companyName
-      }
-      if (typeof body.shortDescription === 'string') {
-        updateData.shortDescription = body.shortDescription
-      }
-      if (typeof body.logoUrl === 'string') {
-        updateData.logoUrl = body.logoUrl
-      }
-
-      if (Object.keys(updateData).length === 0) {
-        return errorResponse('No valid fields provided for update', 400)
-      }
-
-      const [updated] = await db
-        .update(companyTable)
-        .set(updateData)
-        .where(eq(companyTable.walletAddress, lowerWallet))
-        .returning()
-
-      return successResponse(updated, 'Company profile updated successfully')
-    } else {
-      const [existing] = await db
+    if (role === 'freelancer') {
+      const [found] = await db
         .select()
         .from(freelancerTable)
-        .where(eq(freelancerTable.walletAddress, lowerWallet))
+        .where(eq(freelancerTable.walletEns, walletEns))
+        .limit(1);
+      existing = found || null;
 
       if (!existing) {
-        return errorResponse('No matching freelancer profile found', 404)
+        return errorResponse(
+          `Freelancer profile not found by walletEns: ${walletEns}`,
+          404
+        );
       }
 
-      const updateData: Record<string, any> = {}
-      if (typeof body.freelancerName === 'string') {
-        updateData.freelancerName = body.freelancerName
-      }
-      if (typeof body.skills === 'string') {
-        updateData.skills = body.skills
-      } else if (Array.isArray(body.skills)) {
-        updateData.skills = body.skills.join(', ')
-      }
-      if (typeof body.profilePicUrl === 'string') {
-        updateData.profilePicUrl = body.profilePicUrl
-      }
-
-      if (Object.keys(updateData).length === 0) {
-        return errorResponse('No valid fields provided for update', 400)
-      }
-
-      const [updated] = await db
+      // 2) Perform the update
+      const updatedRows = await db
         .update(freelancerTable)
-        .set(updateData)
-        .where(eq(freelancerTable.walletAddress, lowerWallet))
-        .returning()
+        .set({
+          walletAddress,
+          freelancerName:
+            body.freelancerName !== undefined
+              ? body.freelancerName
+              : existing.freelancerName,
+          skills:
+            body.skills !== undefined ? body.skills : existing.skills,
+          profilePicUrl:
+            body.profilePicUrl !== undefined
+              ? body.profilePicUrl
+              : existing.profilePicUrl,
+          githubProfileUsername:
+            body.githubProfileUsername !== undefined
+              ? body.githubProfileUsername
+              : existing.githubProfileUsername,
+          updatedAt: new Date(),
+        })
+        .where(eq(freelancerTable.id, existing.id))
+        .returning();
 
-      return successResponse(updated, 'Freelancer profile updated successfully')
+      const updated = Array.isArray(updatedRows) && updatedRows.length > 0
+        ? updatedRows[0]
+        : existing;
+
+      return NextResponse.json({
+        isSuccess: true,
+        message: 'Successfully updated profile',
+        data: formatProfileResponse('freelancer', updated),
+      }, { status: 200 });
+    } else {
+      // role=company
+      const [found] = await db
+        .select()
+        .from(companyTable)
+        .where(eq(companyTable.walletEns, walletEns))
+        .limit(1);
+      existing = found || null;
+
+      if (!existing) {
+        return errorResponse(
+          `Company profile not found by walletEns: ${walletEns}`,
+          404
+        );
+      }
+
+      // update
+      const updatedRows = await db
+        .update(companyTable)
+        .set({
+          walletAddress,
+          companyName:
+            body.companyName !== undefined ? body.companyName : existing.companyName,
+          shortDescription:
+            body.shortDescription !== undefined ? body.shortDescription : existing.shortDescription,
+          logoUrl:
+            body.logoUrl !== undefined ? body.logoUrl : existing.logoUrl,
+          githubProfileUsername:
+            body.githubProfileUsername !== undefined
+              ? body.githubProfileUsername
+              : existing.githubProfileUsername,
+          updatedAt: new Date(),
+        })
+        .where(eq(companyTable.id, existing.id))
+        .returning();
+
+      const updated = Array.isArray(updatedRows) && updatedRows.length > 0
+        ? updatedRows[0]
+        : existing;
+
+      return NextResponse.json({
+        isSuccess: true,
+        message: 'Successfully updated profile',
+        data: formatProfileResponse('company', updated),
+      }, { status: 200 });
     }
   } catch (error) {
-    console.error('Update profile error:', error);
-    return serverErrorResponse(error)
+    console.error('[PUT /api/userProfile] error =>', error);
+    return serverErrorResponse(error);
   }
 }
 
-async function deleteUserProfile(req: NextRequest, parsedBody?: any) {
+/**
+ * DELETE /api/userProfile
+ * Body:
+ * {
+ *   "role": "freelancer" | "company",
+ *   "walletAddress": "...",
+ *   "walletEns": "..." (optional or required depending on your rules)
+ * }
+ *
+ * Updated to ensure all user-related data is also removed:
+ *  - For freelancers: remove all submissions, user balances, user_skills,
+ *    and finally remove the freelancer row.
+ *  - For companies: remove the user balances, and finally remove the company row.
+ *  - Return the relevant info (walletAddress, walletEns, id) in the response data.
+ */
+async function deleteUserProfile(req: NextRequest) {
   try {
-    logApiRequest('DELETE', '/api/userProfile', req.ip || 'unknown')
-    
-    const body = parsedBody || await req.json();
-    
-    const validation = validateRequiredFields(body, ['role', 'walletAddress'])
-    if (!validation.isValid) {
-      return errorResponse(
-        `Missing required fields: ${validation.missingFields.join(', ')}`,
-        400
-      )
-    }
-    if (body.role !== 'company' && body.role !== 'freelancer') {
-      return errorResponse('Role must be either "company" or "freelancer"', 400)
-    }
-    if (!body.walletAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
-      return errorResponse('Invalid wallet address format', 400)
-    }
-    
-    const lowerWallet = body.walletAddress.toLowerCase()
+    logApiRequest('DELETE', '/api/userProfile', req.ip || 'unknown');
 
-    if (body.role === 'company') {
-      const [existing] = await db
+    const body = await req.json();
+    const check = validateRequiredFields(body, ['role', 'walletAddress']);
+    if (!check.isValid) {
+      return errorResponse(
+        `Missing required fields: ${check.missingFields.join(', ')}`,
+        400
+      );
+    }
+
+    const role = (body.role || '').toLowerCase().trim();
+    if (role !== 'freelancer' && role !== 'company') {
+      return errorResponse('Invalid role (must be freelancer or company)', 400);
+    }
+
+    const walletAddress = (body.walletAddress || '').toLowerCase().trim();
+
+    if (role === 'company') {
+      // 1) find the company
+      const [company] = await db
         .select()
         .from(companyTable)
-        .where(eq(companyTable.walletAddress, lowerWallet))
+        .where(eq(companyTable.walletAddress, walletAddress))
+        .limit(1);
 
-      if (!existing) {
-        return errorResponse('No matching company profile found', 404)
+      if (!company) {
+        return errorResponse('No matching company found', 404);
       }
+
+      // 2) delete any balances for this company
+      await db
+        .delete(userBalancesTable)
+        .where(eq(userBalancesTable.userId, walletAddress));
+
+      // (No submissions to delete for company, as companies typically do not submit.)
+
+      // 3) finally, remove from company table
       await db
         .delete(companyTable)
-        .where(eq(companyTable.walletAddress, lowerWallet))
+        .where(eq(companyTable.id, company.id));
 
-      return successResponse(null, 'Company profile deleted successfully')
+      return NextResponse.json(
+        {
+          isSuccess: true,
+          message: 'Company profile deleted successfully',
+          data: {
+            walletAddress: company.walletAddress,
+            walletEns: company.walletEns,
+            Id: company.id,
+          },
+        },
+        { status: 200 }
+      );
     } else {
-      const [existing] = await db
+      // role=freelancer
+      const [freelancer] = await db
         .select()
         .from(freelancerTable)
-        .where(eq(freelancerTable.walletAddress, lowerWallet))
+        .where(eq(freelancerTable.walletAddress, walletAddress))
+        .limit(1);
 
-      if (!existing) {
-        return errorResponse('No matching freelancer profile found', 404)
+      if (!freelancer) {
+        return errorResponse('No matching freelancer found', 404);
       }
+
+      // 1) Remove all submissions from projectSubmissionsTable for this freelancer
+      await db
+        .delete(projectSubmissionsTable)
+        .where(eq(projectSubmissionsTable.freelancerAddress, walletAddress));
+
+      // 2) Remove user balances for this freelancer
+      await db
+        .delete(userBalancesTable)
+        .where(eq(userBalancesTable.userId, walletAddress));
+
+      // 3) Remove user skills bridging records
+      await db
+        .delete(userSkillsTable)
+        .where(eq(userSkillsTable.userId, walletAddress));
+
+      // 4) finally remove from the freelancer table
       await db
         .delete(freelancerTable)
-        .where(eq(freelancerTable.walletAddress, lowerWallet))
+        .where(eq(freelancerTable.id, freelancer.id));
 
-      return successResponse(null, 'Freelancer profile deleted successfully')
+      return NextResponse.json(
+        {
+          isSuccess: true,
+          message: 'Freelancer profile deleted successfully',
+          data: {
+            walletAddress: freelancer.walletAddress,
+            walletEns: freelancer.walletEns,
+            Id: freelancer.id,
+          },
+        },
+        { status: 200 }
+      );
     }
   } catch (error) {
-    console.error('Delete profile error:', error);
-    return serverErrorResponse(error)
+    console.error('[DELETE /api/userProfile] error =>', error);
+    return serverErrorResponse(error);
   }
 }
 
-const updateUserProfileWithValidation = withValidation(updateUserProfile, updateUserProfileValidationSchema);
-const deleteUserProfileWithValidation = withValidation(deleteUserProfile, updateUserProfileValidationSchema);
+/**
+ * OPTIONAL: POST /api/userProfile
+ * If you need a body-based fetch approach. 
+ */
+async function postFetchUserProfile(req: NextRequest) {
+  try {
+    logApiRequest('POST', '/api/userProfile', req.ip || 'unknown');
 
+    const body = await req.json();
+    const v = validateRequiredFields(body, ['role']);
+    if (!v.isValid) {
+      return errorResponse(
+        `Missing field(s): ${v.missingFields.join(', ')}`,
+        400
+      );
+    }
+    const role = body.role.toLowerCase();
+    if (role !== 'freelancer' && role !== 'company') {
+      return errorResponse('role must be either freelancer or company', 400);
+    }
+    const walletAddress = (body.walletAddress || '').toLowerCase().trim();
+    const walletEns = (body.walletEns || '').toLowerCase().trim();
+
+    if (!walletAddress && !walletEns) {
+      return errorResponse(
+        'Must provide at least one: `walletAddress` or `walletEns`',
+        400
+      );
+    }
+
+    // Just replicate the GET logic to find the row:
+    let row: any = null;
+    if (role === 'company') {
+      if (walletEns) {
+        const [cByEns] = await db
+          .select()
+          .from(companyTable)
+          .where(eq(companyTable.walletEns, walletEns))
+          .limit(1);
+        row = cByEns || null;
+      }
+      if (!row && walletAddress) {
+        const [cByAddr] = await db
+          .select()
+          .from(companyTable)
+          .where(eq(companyTable.walletAddress, walletAddress))
+          .limit(1);
+        row = cByAddr || null;
+      }
+    } else {
+      // freelancer
+      if (walletEns) {
+        const [fEns] = await db
+          .select()
+          .from(freelancerTable)
+          .where(eq(freelancerTable.walletEns, walletEns))
+          .limit(1);
+        row = fEns || null;
+      }
+      if (!row && walletAddress) {
+        const [fAddr] = await db
+          .select()
+          .from(freelancerTable)
+          .where(eq(freelancerTable.walletAddress, walletAddress))
+          .limit(1);
+        row = fAddr || null;
+      }
+    }
+
+    if (!row) {
+      return errorResponse(`${role} profile not found`, 404);
+    }
+
+    return successResponse(formatProfileResponse(role, row));
+  } catch (error) {
+    console.error('[POST /api/userProfile/fetch] error =>', error);
+    return serverErrorResponse(error);
+  }
+}
+
+// Export route handlers, all wrapped with CORS
 export const GET = withCors(getUserProfile);
-export const PUT = withCors(updateUserProfileWithValidation);
-export const DELETE = withCors(deleteUserProfileWithValidation);
-export const OPTIONS = withCors(async () => NextResponse.json({}, { status: 204 }));
+export const PUT = withCors(updateUserProfile);
+export const DELETE = withCors(deleteUserProfile);
+export const POST = withCors(postFetchUserProfile);
+
+export const OPTIONS = withCors(async () => new Response(null, { status: 204 }));

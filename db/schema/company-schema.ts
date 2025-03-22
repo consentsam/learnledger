@@ -4,16 +4,29 @@
 import { InferModel } from 'drizzle-orm'
 import { pgTable, uuid, text, timestamp } from 'drizzle-orm/pg-core'
 
+/**
+ * @file company-schema.ts
+ * Defines a "company" table for users with role='company'
+ */
 export const companyTable = pgTable('company', {
   id: uuid('id').defaultRandom().primaryKey(),
-  walletAddress: text('wallet_address').notNull(),
+  walletAddress: text('walletAddress').notNull(),
+  walletEns: text('walletEns'),
+  
+  // The company name
+  companyName: text('companyName'),
+  
+  // A short description of the company
+  shortDescription: text('shortDescription'),
+  
+  // An optional company logo
+  logoUrl: text('logoUrl'),
+  
+  // GitHub profile
+  githubProfileUsername: text('githubProfileUsername'),
 
-  companyName: text('company_name').notNull(),
-  shortDescription: text('short_description'),
-  logoUrl: text('logo_url'),
-
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at')
+  createdAt: timestamp('createdAt').defaultNow().notNull(),
+  updatedAt: timestamp('updatedAt')
     .defaultNow()
     .notNull()
     .$onUpdate(() => new Date()),

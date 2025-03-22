@@ -193,7 +193,7 @@ export async function autoAwardOnPrMergeAction(params: {
 export async function approveSubmissionAction(params: {
   projectId: string
   freelancerAddress: string
-  walletAddress: string
+  companyWallet: string
 }): Promise<ActionResult> {
   try {
     // 1) Load project
@@ -203,7 +203,7 @@ export async function approveSubmissionAction(params: {
     }
 
     // 2) Must match projectOwner
-    if (project.projectOwner.toLowerCase() !== params.walletAddress.toLowerCase()) {
+    if (project.projectOwner.toLowerCase() !== params.companyWallet.toLowerCase()) {
       return { isSuccess: false, message: 'Not authorized' }
     }
 
@@ -216,7 +216,10 @@ export async function approveSubmissionAction(params: {
     // 4) Award tokens
     const prize = parseFloat(project.prizeAmount?.toString() ?? '0')
     if (prize > 0) {
-      const award = await updateBalanceAction({ userId: params.freelancerAddress, amount: prize })
+      const award = await updateBalanceAction({ 
+        userId: params.freelancerAddress, 
+        amount: prize 
+      })
       if (!award.isSuccess) {
         return { isSuccess: false, message: `Failed awarding tokens: ${award.message}` }
       }

@@ -1,136 +1,140 @@
-import { NextRequest } from 'next/server'
-import { registerUserProfileAction } from '@/actions/db/user-profile-actions'
-import { 
-  successResponse, 
+/* <content> /app/api/register/route.ts */
+
+// Force dynamic route
+import { NextRequest, NextResponse } from 'next/server';
+import { withCors } from '@/lib/cors';
+import { withValidation, rules } from '@/lib/middleware/validation';
+import {
+  successResponse,
+  errorResponse,
   serverErrorResponse,
   logApiRequest,
-  errorResponse,
-  ErrorDetails
-} from '@/app/api/api-utils'
-import { withValidation, rules } from '@/lib/middleware/validation';
-import { withCors } from '@/lib/cors';
+} from '@/app/api/api-utils';
 
-// @ts-nocheck
-// Force this API route to be dynamic
-export const dynamic = 'force-dynamic';
+import { registerUserProfileAction } from '@/actions/db/user-profile-actions';
 
 // Define the validation schema for the registration endpoint
+// We add "walletEns" as mandatory if role=freelancer, optional for company (you can adjust if you want it mandatory for company too).
 const registerValidationSchema = {
   body: {
     role: [
       rules.required('role'),
-      rules.isValidRole('role'),
+      rules.isValidRole('role'), // must be "freelancer" or "company"
     ],
     walletAddress: [
       rules.required('walletAddress'),
-      rules.isWalletAddress('walletAddress'),
+      rules.isWalletAddress('walletAddress'), // your custom rule ensuring "0x" + 40 hex
     ],
-    // Company-specific validations
-    companyName: [
+    walletEns: [
       rules.custom(
-        'companyName', 
+        'walletEns',
         (value: string | undefined, body: any) => {
-          if (body?.role !== 'company') return true;
-          return value !== undefined && value !== '';
+          // If role=freelancer => walletEns is mandatory
+          if (body?.role === 'freelancer') {
+            return !!(value && value.trim());
+          }
+          // If role=company => walletEns is optional => return true
+          return true;
         },
-        'Company name is required for company profiles'
+        'walletEns is required for freelancers'
       ),
     ],
-    // Freelancer-specific validations
     freelancerName: [
       rules.custom(
         'freelancerName',
         (value: string | undefined, body: any) => {
-          if (body?.role !== 'freelancer') return true;
+          if (body?.role !== 'freelancer') return true; // only required if freelancer
           return value !== undefined && value !== '';
         },
-        'Freelancer name is required for freelancer profiles'
+        'freelancerName is required when role=freelancer'
       ),
     ],
+    companyName: [
+      rules.custom(
+        'companyName',
+        (value: string | undefined, body: any) => {
+          if (body?.role !== 'company') return true; // only required if company
+          return value !== undefined && value !== '';
+        },
+        'companyName is required when role=company'
+      ),
+    ],
+    skills: [
+      rules.custom(
+        'skills',
+        (value: string | string[] | undefined, body: any) => {
+          // If role=freelancer => we want "skills" mandatory
+          if (body?.role === 'freelancer') {
+            return !!value; // must not be empty
+          }
+          return true;
+        },
+        'skills are required for freelancers'
+      ),
+    ],
+    // "githubProfileUsername" is optional, so we skip enforced rules
   },
 };
 
+/**
+ * POST /api/register
+ * Creates (or updates) a user profile (company or freelancer).
+ */
 async function registerHandler(req: NextRequest, parsedBody?: any) {
   try {
-    console.log(`[Register API] Environment: ${process.env.NODE_ENV || 'unknown'}`);
-    console.log(`[Register API] DISABLE_SSL_VALIDATION: ${process.env.DISABLE_SSL_VALIDATION || 'not set'}`);
-    console.log(`[Register API] NODE_TLS_REJECT_UNAUTHORIZED: ${process.env.NODE_TLS_REJECT_UNAUTHORIZED || 'not set'}`);
-    console.log(`[Register API] Database URL: ${process.env.DATABASE_URL?.replace(/:[^:]*@/, ':****@')}`);
-
     logApiRequest('POST', '/api/register', req.ip || 'unknown');
-    
-    // Parse the JSON from request if no parsedBody is given
-    const body = parsedBody || await req.json();
-    
-    console.log(`[Register API] Registration attempt for wallet: ${body.walletAddress?.substr(0,10)}... role: ${body.role}`);
 
-    console.log(`[Register API] Calling registerUserProfileAction`);
+    // Parse the JSON from request if no parsedBody is given
+    const body = parsedBody || (await req.json());
+
     const result = await registerUserProfileAction({
       role: body.role,
       walletAddress: body.walletAddress,
+      walletEns: body.walletEns,
+      // Company fields
       companyName: body.companyName,
       shortDescription: body.shortDescription,
       logoUrl: body.logoUrl,
+      githubProfileUsername: body.githubProfileUsername,
+
+      // Freelancer fields
       freelancerName: body.freelancerName,
       skills: body.skills,
       profilePicUrl: body.profilePicUrl,
     });
 
-    console.log(`[Register API] registerUserProfileAction result:`, { 
-      isSuccess: result.isSuccess, 
-      message: result.message,
-      hasData: !!result.data,
-      hasError: !!result.error 
-    });
-
     if (!result.isSuccess) {
-      if (result.message?.includes('already exists')) {
-        return errorResponse(
-          `${body.role === 'company' ? 'Company' : 'Freelancer'} profile with this wallet address already exists`, 
-          400,
-          { walletAddress: ['This wallet address is already registered with a profile'] }
-        );
-      }
-      if (result.message?.includes('Invalid wallet')) {
-        return errorResponse('Invalid wallet address format', 400, {
-          walletAddress: ['Wallet address must start with 0x']
-        });
-      }
-
-      console.error(`[Register API] Server error during registration:`, result.error || result.message);
-      
-      const errorDetails: ErrorDetails = {
-        message: result.message || 'Registration failed',
-        dbURL: process.env.DATABASE_URL?.replace(/:[^:]*@/, ':****@'),
-        env: process.env.NODE_ENV || 'unknown',
-        vercelEnv: process.env.VERCEL_ENV || 'unknown'
-      };
-      if (result.error) {
-        errorDetails.error = typeof result.error === 'object'
-          ? result.error
-          : { message: String(result.error) };
-      }
-      
-      return serverErrorResponse(new Error(result.message || 'Registration failed'), errorDetails);
+      return errorResponse(result.message || 'Registration failed', 400);
     }
 
-    console.log(`[Register API] Registration successful`);
-    return successResponse(result.data, 'Successfully registered profile');
-  } catch (error: any) {
-    console.error('[Register API] Unhandled error:', error);
+    // At this point, "result.data" is either the inserted or updated row from DB
+    const row = result.data;
 
-    const errorDetails: ErrorDetails = {
-      message: error?.message || 'Registration failed due to an unexpected error',
-      dbURL: process.env.DATABASE_URL?.replace(/:[^:]*@/, ':****@'),
-      env: process.env.NODE_ENV || 'unknown',
-      vercelEnv: process.env.VERCEL_ENV || 'unknown'
-    };
-    
-    return serverErrorResponse(error, errorDetails);
+    // We want a consistent output shape. So let's build it:
+    // If role=freelancer => these fields
+    // If role=company => those fields, etc.
+    let responseData: Record<string, any> = { ...row };
+
+    // If you want to rename some DB columns to the final JSON keys, do it here:
+    // e.g. responseData.githubProfileUsername = row.githubProfileUsername;
+    // already in row as the same name, presumably
+
+    // For freelancers, the important ones might be:
+    // id, walletEns, walletAddress, freelancerName, skills, profilePicUrl, githubProfileUsername, createdAt, updatedAt
+    // For companies, the important ones might be:
+    // id, walletEns, walletAddress, companyName, shortDescription, logoUrl, githubProfileUsername, createdAt, updatedAt
+
+    // Return your final success
+    return successResponse(responseData, 'Successfully registered profile');
+  } catch (error: any) {
+    console.error('[POST /api/register] Unhandled error:', error);
+    return serverErrorResponse(error);
   }
 }
 
 const handlerWithValidation = withValidation(registerHandler, registerValidationSchema);
+
+// Wrap with CORS
 export const POST = withCors(handlerWithValidation);
 export const OPTIONS = withCors(async () => {
   return new Response(null, { status: 204 });
