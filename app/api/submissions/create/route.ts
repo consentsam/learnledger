@@ -48,7 +48,7 @@ async function postCreateSubmission(req: NextRequest) {
     
     // 1) Validate required fields. 
     //    We do NOT require 'freelancerWallet' anymore; we handle walletEns/walletAddress logic below.
-    const validation = validateRequiredFields(body, ['projectId'])
+    const validation = validateRequiredFields(body, ['projectId', 'walletEns', 'walletAddress'])
     if (!validation.isValid) {
       return errorResponse(
         `Missing required fields: ${validation.missingFields.join(', ')}`,
@@ -57,7 +57,10 @@ async function postCreateSubmission(req: NextRequest) {
     }
 
     // 2) Resolve final freelancer address from "walletEns" or "walletAddress"
-    const { projectId, walletEns = '', walletAddress = '', prLink, submissionText } = body
+    const { projectId, walletEns, walletAddress , prLink, submissionText } = body
+    console.log('projectId =>', projectId)
+    console.log('walletEns =>', walletEns)
+    console.log('walletAddress =>', walletAddress)
 
     // Both are optional, but we must have at least one
     if (!walletEns && !walletAddress) {
@@ -71,12 +74,14 @@ async function postCreateSubmission(req: NextRequest) {
     // Try ENS first
     if (walletEns) {
       const lowerEns = walletEns.trim().toLowerCase()
+      console.log('lowerEns =>', lowerEns)
       // find freelancer by that ENS
       const [byEns] = await db
         .select()
         .from(freelancerTable)
         .where(eq(freelancerTable.walletEns, lowerEns))
         .limit(1)
+      console.log('byEns =>', byEns)
       if (!byEns) {
         return errorResponse(
           `No freelancer found for walletEns='${walletEns}'`,
@@ -99,9 +104,10 @@ async function postCreateSubmission(req: NextRequest) {
 
     // 3) Call the createSubmissionAction with the final wallet
     const result = await createSubmissionAction({
-      projectId,
-      freelancerWallet: finalFreelancerAddress,
-      submissionText,
+      projectId : projectId,
+      freelancerWalletEns: walletEns,
+      freelancerWalletAddress: walletAddress.toLowerCase(),
+      submissionText: submissionText,
       githubLink: prLink
     })
 

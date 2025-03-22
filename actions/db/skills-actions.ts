@@ -203,14 +203,14 @@ export async function addSkillToUserAction(params: { userId: string; skillId: st
  *  - bridging table user_skills (if that has data),
  *  - or fallback to the freelancer's .skills column if bridging is empty.
  */
-export async function fetchUserSkillsAction(userId: string): Promise<ActionResult> {
-  if (!userId) {
-    return { isSuccess: false, message: "User ID is required" }
+export async function fetchUserSkillsAction(walletEns: string): Promise<ActionResult> {
+  if (!walletEns) {
+    return { isSuccess: false, message: "Wallet ENS is required" }
   }
   try {
-    const lowerUserId = userId.toLowerCase();
+    const lowerWalletEns = walletEns.toLowerCase();
 
-    // 1) Attempt bridging table first
+   /*  // 1) Attempt bridging table first
     const rows = await db
       .select({
         userSkillId: userSkillsTable.id,
@@ -231,20 +231,20 @@ export async function fetchUserSkillsAction(userId: string): Promise<ActionResul
         message: `Fetched skills for userId: ${lowerUserId} from bridging`,
         data: rows
       }
-    }
+    } */
 
     // 2) If bridging is empty, fallback to reading the freelancer table .skills
     const [freelancer] = await db
       .select()
       .from(freelancerTable)
-      .where(eq(freelancerTable.walletAddress, lowerUserId))
+      .where(eq(freelancerTable.walletEns, lowerWalletEns))
       .limit(1)
 
     if (!freelancer) {
       // No bridging + no freelancer found => empty result
       return {
         isSuccess: true,
-        message: `No bridging and no freelancer row for ${lowerUserId}`,
+        message: `No freelancer row for ${lowerWalletEns}`,
         data: []
       }
     }
@@ -254,7 +254,7 @@ export async function fetchUserSkillsAction(userId: string): Promise<ActionResul
       // They just have no skill string
       return {
         isSuccess: true,
-        message: `Fallback: user has an empty .skills column`,
+        message: `Fallback: freelancer has an empty .skills column`,
         data: []
       }
     }
@@ -268,7 +268,7 @@ export async function fetchUserSkillsAction(userId: string): Promise<ActionResul
     // Convert them to the same shape as bridging
     const fallbackRows = skillNames.map((sn) => ({
       userSkillId: '', // no bridging ID
-      userId: lowerUserId,
+      userId: lowerWalletEns,
       skillId: '', // we don't have a skill row ID, not bridging
       addedAt: new Date(),
       skillName: sn.toLowerCase(),
@@ -277,7 +277,7 @@ export async function fetchUserSkillsAction(userId: string): Promise<ActionResul
 
     return {
       isSuccess: true,
-      message: `Fallback: returning .skills column for user ${lowerUserId}`,
+      message: `Fallback: returning .skills column for freelancer ${lowerWalletEns}`,
       data: fallbackRows
     }
   } catch (error) {

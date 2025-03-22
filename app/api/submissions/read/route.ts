@@ -120,8 +120,13 @@ async function getSubmissionsPost(req: NextRequest) {
 
     const body = await req.json().catch(() => ({}));
 
+    // Destructuring the request body to extract the role, walletEns, walletAddress, and projectId.
+    // If walletEns, walletAddress, or projectId are not provided in the body, they default to empty strings.
     const { role, walletEns = '', walletAddress = '', projectId = '' } = body;
-
+    console.log('role inside getSubmissionsPost =>', role)
+    console.log('walletEns inside getSubmissionsPost =>', walletEns)
+    console.log('walletAddress inside getSubmissionsPost =>', walletAddress)
+    console.log('projectId inside getSubmissionsPost =>', projectId)
     // Basic checks
     if (!role || (role !== 'freelancer' && role !== 'company')) {
       return errorResponse('Missing or invalid role (must be freelancer|company)', 400);
@@ -161,7 +166,7 @@ async function getSubmissionsPost(req: NextRequest) {
       const finalFreelancerAddr = freelancerRow.walletAddress.toLowerCase();
 
       // 2) Build conditions
-      const conditions: any[] = [eq(projectSubmissionsTable.freelancerAddress, finalFreelancerAddr)];
+      const conditions: any[] = [eq(projectSubmissionsTable.freelancerWalletAddress, finalFreelancerAddr)];
       if (projectId) {
         conditions.push(eq(projectSubmissionsTable.projectId, projectId));
       }
