@@ -47,6 +47,20 @@ interface CreateProjectParams {
   prizeAmount?: number
   requiredSkills?: string
   completionSkills?: string
+  deadline?: string | Date
+}
+
+/**
+ * Validates if a string is in correct ISO 8601 format
+ * Valid formats: YYYY-MM-DDTHH:mm:ssZ or YYYY-MM-DDTHH:mm:ss+HH:mm
+ */
+function isValidISODate(dateString: string): boolean {
+  const isoDateRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:?\d{2})?$/
+  if (!isoDateRegex.test(dateString)) {
+    return false
+  }
+  const date = new Date(dateString)
+  return date.toString() !== 'Invalid Date'
 }
 
 export async function createProjectAction(
@@ -68,6 +82,16 @@ export async function createProjectAction(
       }
     }
 
+    // Validate deadline format if provided
+    if (params.deadline && typeof params.deadline === 'string') {
+      if (!isValidISODate(params.deadline)) {
+        return {
+          isSuccess: false,
+          message: 'Invalid deadline format. Please use ISO 8601 format (YYYY-MM-DDTHH:mm:ssZ)',
+        }
+      }
+    }
+
     const lowerCaseAddress = params.walletAddress.toLowerCase()
 
     const insertResult = await db
@@ -81,6 +105,7 @@ export async function createProjectAction(
         completionSkills: params.completionSkills || '',
         projectRepo: params.projectRepo || '',
         projectStatus: 'open',
+        deadline: params.deadline ? new Date(params.deadline) : null,
       })
       .returning();
       

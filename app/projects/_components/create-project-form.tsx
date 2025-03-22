@@ -51,6 +51,8 @@ export function ProjectCreationToggle() {
    */
   const [completionSkills, setCompletionSkills] = useState('')
 
+  const [deadline, setDeadline] = useState('')
+
   const { walletAddress } = useWallet()
   const router = useRouter()
 
@@ -59,6 +61,18 @@ export function ProjectCreationToggle() {
    * toggles whether the creation form is shown
    */
   const handleToggleForm = () => setShowForm(!showForm)
+
+  /**
+   * Converts a date string from the date input (YYYY-MM-DD) to ISO format with time
+   * @param dateStr Date string from input
+   * @returns ISO 8601 formatted string
+   */
+  const formatDateToISO = (dateStr: string): string => {
+    if (!dateStr) return ''
+    // Add time component (noon UTC) and convert to ISO string
+    const date = new Date(`${dateStr}T12:00:00Z`)
+    return date.toISOString()
+  }
 
   /**
    * @function handleSubmit
@@ -86,20 +100,20 @@ export function ProjectCreationToggle() {
       prizeAmount: numericPrize,
       requiredSkills,
       completionSkills,
+      deadline: deadline ? formatDateToISO(deadline) : undefined,
     }
 
     try {
-      // Adjust to match your actual endpoint or server action
-      // Here, we assume an API route: /api/projects/create
-      const response = await fetch('/api/projects/create', {
+      const response = await fetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
 
+      const data = await response.json()
+
       if (!response.ok) {
-        const err = await response.json()
-        alert(`Error creating project: ${err.message}`)
+        alert(`Error creating project: ${data.message}`)
         return
       }
 
@@ -115,6 +129,7 @@ export function ProjectCreationToggle() {
       setProjectRepo('')
       setRequiredSkills('')
       setCompletionSkills('')
+      setDeadline('')
     } catch (error) {
       console.error('Error creating project:', error)
       alert('Error occurred while creating the project.')
@@ -165,6 +180,18 @@ export function ProjectCreationToggle() {
               value={projectRepo}
               onChange={(e) => setProjectRepo(e.target.value)}
               placeholder="github.com/org/repo"
+            />
+          </div>
+
+          {/* Deadline */}
+          <div>
+            <label className="block text-sm font-medium mb-1">Deadline (optional)</label>
+            <input
+              type="date"
+              className="w-full border p-2 rounded"
+              value={deadline}
+              onChange={(e) => setDeadline(e.target.value)}
+              placeholder="Deadline for project completion"
             />
           </div>
 

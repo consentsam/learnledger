@@ -1,12 +1,39 @@
+/**
+ * @file /app/api/projects/[projectId]/route.ts
+ *
+ * @description
+ * Handles:
+ *   - GET /api/projects/[projectId]
+ *   - PUT /api/projects/[projectId]
+ *   - DELETE /api/projects/[projectId]  <-- now supports using `walletEns` as well.
+ *
+ * Additional notes:
+ *   - If `walletEns` is provided instead of `walletAddress`, we look up
+ *     the corresponding `walletAddress` from the `companyTable` (because
+ *     only a "company" can own a project).
+ *   - If both are provided, we use `walletEns` first to confirm the owner's address
+ *     (and you could cross-verify if needed).
+ */
+
 import { eq } from 'drizzle-orm'
 import { NextRequest, NextResponse } from 'next/server'
 
 import { db } from '@/db/db'
 import { projectsTable } from '@/db/schema/projects-schema'
 import { companyTable } from '@/db/schema/company-schema'
+import { withCors } from '@/lib/cors'
 
-/** GET /api/projects/[projectId] - existing code  **/
-export async function GET(
+/** 
+ * GET /api/projects/[projectId]
+ * 
+ * Fetch a single project by ID. 
+ * Responds with:
+ * {
+ *   "isSuccess": true|false,
+ *   "data": { ...project fields... }
+ * }
+ */
+async function getProject(
   req: NextRequest,
   { params }: { params: { projectId: string } }
 ) {
@@ -27,7 +54,8 @@ export async function GET(
         projectRepo: projectsTable.projectRepo,
         createdAt: projectsTable.createdAt,
         updatedAt: projectsTable.updatedAt,
-        // Company fields
+
+        // Example of joined info if you need it
         companyId: companyTable.id,
         companyName: companyTable.companyName,
       })
@@ -56,7 +84,9 @@ export async function GET(
   }
 }
 
-/** PUT /api/projects/[projectId] 
+/**
+ * PUT /api/projects/[projectId]
+ * 
  * Updates a project.
  * Request body should contain:
  * - projectName: string (required)
@@ -65,9 +95,11 @@ export async function GET(
  * - requiredSkills?: string
  * - completionSkills?: string
  * - projectRepo?: string
- * - walletAddress: string (required, must match project owner)
+ * - (EITHER) walletAddress: string (required) 
+ *   OR walletEns: string (required if you do not pass walletAddress)
+ *   because we treat 'walletEns' as the primary key in an ENS-based approach.
  */
-export async function PUT(
+async function updateProject(
   req: NextRequest,
   { params }: { params: { projectId: string } }
 ) {
@@ -82,39 +114,76 @@ export async function PUT(
       requiredSkills, 
       completionSkills, 
       projectRepo,
-      walletAddress
+      walletAddress,    // optional if you provide walletEns
+      walletEns        // new field to handle "ENS is primary"
     } = body
 
-    if (!projectName || !walletAddress) {
+    if (!projectName) {
       return NextResponse.json(
-        { isSuccess: false, message: 'Project name and wallet address are required' },
+        { isSuccess: false, message: 'Project name is required' },
         { status: 400 }
       )
     }
-    
-    // 1) First check if the project exists and if the requester is the owner
+
+    // Find the project first to determine ownership check method
     const [project] = await db
       .select()
       .from(projectsTable)
       .where(eq(projectsTable.id, projectId))
       .limit(1)
-      
+
     if (!project) {
       return NextResponse.json(
         { isSuccess: false, message: 'Project not found' },
         { status: 404 }
       )
     }
+
+    // Check ownership - account for different ways project_owner might be stored
+    let isAuthorized = false;
     
-    // Check ownership
-    if (project.projectOwner.toLowerCase() !== walletAddress.toLowerCase()) {
+    // Case 1: Direct match on ENS name
+    if (walletEns && project.projectOwner.toLowerCase() === walletEns.toLowerCase()) {
+      isAuthorized = true;
+    } 
+    // Case 2: Direct match on wallet address 
+    else if (walletAddress && project.projectOwner.toLowerCase() === walletAddress.toLowerCase()) {
+      isAuthorized = true;
+    }
+    // Case 3: ENS lookup needed (if project_owner is wallet address but user provided ENS)
+    else if (walletEns && !isAuthorized) {
+      // Look up the company that has this walletEns
+      const [company] = await db
+        .select()
+        .from(companyTable)
+        .where(eq(companyTable.walletEns, walletEns.toLowerCase()))
+        .limit(1)
+
+      if (company && company.walletAddress.toLowerCase() === project.projectOwner.toLowerCase()) {
+        isAuthorized = true;
+      }
+    }
+    // Case 4: Reverse lookup (if project_owner is ENS but user provided wallet address)
+    else if (walletAddress && !isAuthorized) {
+      const [company] = await db
+        .select()
+        .from(companyTable)
+        .where(eq(companyTable.walletAddress, walletAddress.toLowerCase()))
+        .limit(1)
+        
+      if (company && company.walletEns.toLowerCase() === project.projectOwner.toLowerCase()) {
+        isAuthorized = true;
+      }
+    }
+
+    if (!isAuthorized) {
       return NextResponse.json(
-        { isSuccess: false, message: 'Only the owner can update this project' },
+        { isSuccess: false, message: 'Only the project owner can update this project' },
         { status: 403 }
       )
     }
 
-    // 2) Perform the update
+    // Perform the update
     const [updated] = await db
       .update(projectsTable)
       .set({
@@ -141,28 +210,35 @@ export async function PUT(
 
 /**
  * DELETE /api/projects/[projectId]
- * Requires body: 
+ *
+ * Either:
+ *   - pass "walletAddress" in body, or
+ *   - pass "walletEns" in body, from which we will derive the actual wallet address
+ * 
+ * Example request body:
  * {
- *   walletAddress: string (must match project owner)
+ *   "projectId":"a-b-c",
+ *   "walletEns": "mycompany.eth"
  * }
+ * or:
+ * {
+ *   "walletAddress": "0xAbC123..."
+ * }
+ *
+ * This method checks project ownership. 
+ * Also checks if `assignedFreelancer` is null before allowing deletion.
  */
-export async function DELETE(
+async function deleteProject(
   req: NextRequest,
   { params }: { params: { projectId: string } }
 ) {
   try {
     const projectId = params.projectId
     const body = await req.json()
-    const { walletAddress } = body
 
-    if (!walletAddress) {
-      return NextResponse.json(
-        { isSuccess: false, message: 'Wallet address is required' },
-        { status: 400 }
-      )
-    }
+    const { walletAddress, walletEns } = body
 
-    // 1) First check if the project exists and if the requester is the owner
+    // Find the project first
     const [project] = await db
       .select()
       .from(projectsTable)
@@ -176,15 +252,61 @@ export async function DELETE(
       )
     }
 
-    // Check ownership
-    if (project.projectOwner.toLowerCase() !== walletAddress.toLowerCase()) {
+    // Check ownership - account for different ways project_owner might be stored
+    let isAuthorized = false;
+    
+    // Case 1: Direct match on ENS name
+    if (walletEns && project.projectOwner.toLowerCase() === walletEns.toLowerCase()) {
+      isAuthorized = true;
+      console.log("Authorized by direct ENS match");
+    } 
+    // Case 2: Direct match on wallet address 
+    else if (walletAddress && project.projectOwner.toLowerCase() === walletAddress.toLowerCase()) {
+      isAuthorized = true;
+      console.log("Authorized by direct wallet address match");
+    }
+    // Case 3: ENS lookup needed (if project_owner is wallet address but user provided ENS)
+    else if (walletEns && !isAuthorized) {
+      // Look up the company that has this walletEns
+      const [company] = await db
+        .select()
+        .from(companyTable)
+        .where(eq(companyTable.walletEns, walletEns.toLowerCase()))
+        .limit(1)
+
+      if (company && company.walletAddress.toLowerCase() === project.projectOwner.toLowerCase()) {
+        isAuthorized = true;
+        console.log("Authorized by ENS-to-wallet lookup");
+      }
+    }
+    // Case 4: Reverse lookup (if project_owner is ENS but user provided wallet address)
+    else if (walletAddress && !isAuthorized) {
+      const [company] = await db
+        .select()
+        .from(companyTable)
+        .where(eq(companyTable.walletAddress, walletAddress.toLowerCase()))
+        .limit(1)
+        
+      if (company && company.walletEns.toLowerCase() === project.projectOwner.toLowerCase()) {
+        isAuthorized = true;
+        console.log("Authorized by wallet-to-ENS lookup");
+      }
+    }
+
+    if (!isAuthorized) {
+      console.log("Authorization failed:", {
+        projectOwner: project.projectOwner,
+        walletEns,
+        walletAddress
+      });
+      
       return NextResponse.json(
         { isSuccess: false, message: 'Only the owner can delete this project' },
         { status: 403 }
       )
     }
 
-    // 3) Cannot delete if project is assigned 
+    // Cannot delete if project is assigned
     if (project.assignedFreelancer) {
       return NextResponse.json(
         { isSuccess: false, message: 'Cannot delete a project that has been assigned' },
@@ -192,10 +314,8 @@ export async function DELETE(
       )
     }
 
-    // 4) Perform the delete
-    await db
-      .delete(projectsTable)
-      .where(eq(projectsTable.id, projectId))
+    // Perform the delete
+    await db.delete(projectsTable).where(eq(projectsTable.id, projectId))
 
     return NextResponse.json(
       { isSuccess: true, message: 'Project deleted successfully' },
@@ -209,3 +329,24 @@ export async function DELETE(
     )
   }
 }
+
+// We keep dynamic (disable route segment caching)
+export const dynamic = 'force-dynamic';
+
+// Export the handler functions with CORS middleware
+// Fix: Properly wrap handlers to ensure params are passed through
+export const GET = (req: NextRequest, context: any) => {
+  return withCors(async (req: NextRequest) => getProject(req, context))(req);
+};
+
+export const PUT = (req: NextRequest, context: any) => {
+  return withCors(async (req: NextRequest) => updateProject(req, context))(req);
+};
+
+export const DELETE = (req: NextRequest, context: any) => {
+  return withCors(async (req: NextRequest) => deleteProject(req, context))(req);
+};
+
+export const OPTIONS = withCors(async () => {
+  return new Response(null, { status: 204 })
+})

@@ -11,7 +11,7 @@ import { pgTable, uuid, text, timestamp } from 'drizzle-orm/pg-core'
 export const companyTable = pgTable('company', {
   id: uuid('id').defaultRandom().primaryKey(),
   walletAddress: text('walletAddress').notNull(),
-  walletEns: text('walletEns'),
+  walletEns: text('walletEns').notNull(),
   
   // The company name
   companyName: text('companyName'),

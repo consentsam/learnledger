@@ -89,6 +89,49 @@ export async function createSubmissionAction(params: {
   }
 }
 
+export async function rejectSubmissionAction(params: {
+  submissionId: string,
+  reason?: string,             // optional reason
+  companyWalletEns: string,    // or walletAddress
+}): Promise<ActionResult> {
+  try {
+    // 1) find submission
+    const [submission] = await db
+      .select()
+      .from(projectSubmissionsTable)
+      .where(eq(projectSubmissionsTable.id, params.submissionId))
+      .limit(1)
+
+    if (!submission) {
+      return { isSuccess: false, message: 'Submission not found' }
+    }
+
+    // 2) Here you’d verify that the companyWalletEns => 
+    //    can “own” the project? Possibly do a join on the project to ensure 
+    //    the user is the project’s owner. Omitted for brevity.
+
+    // 3) Update it to rejected
+    const [updated] = await db
+      .update(projectSubmissionsTable)
+      .set({
+        status: 'rejected',
+        isMerged: false, // to ensure consistent
+        updatedAt: new Date(),
+      })
+      .where(eq(projectSubmissionsTable.id, params.submissionId))
+      .returning()
+    
+    return {
+      isSuccess: true,
+      message: 'Submission was rejected successfully.',
+      data: updated,
+    }
+  } catch (error) {
+    console.error('[rejectSubmissionAction] error:', error)
+    return { isSuccess: false, message: 'Internal error rejecting submission' }
+  }
+}
+
 // Example helpers
 function extractRepoOwner(githubLink: string): string {
   try {

@@ -1,11 +1,32 @@
-import { NextRequest } from 'next/server'
+/**
+ * @file /app/api/projects/route.ts
+ *
+ * @description
+ * Handles:
+ * - GET /api/projects (list/fetch projects with optional query-param-based filtering)
+ * - POST /api/projects:
+ *     (A) Create a new project (if body has "projectName" etc.)
+ *     (B) Filter projects (if body has "status", "skills", "sortBy", etc. but no creation fields)
+ *
+ * Also includes minimal integration of a 'deadline' field, so you can sort by 'deadline' if needed.
+ * If your 'projectsTable' schema does not yet have 'deadline', you should add it. Example:
+ *
+ *  export const projectsTable = pgTable('projects', {
+ *    ...
+ *    deadline: timestamp('deadline', { mode: 'date' }), // or .notNull() if required
+ *  })
+ *
+ * This ensures the new "sortBy: 'deadline'" logic works without errors.
+ */
+
+import { NextRequest, NextResponse } from 'next/server'
+import { eq, sql, asc, desc, and } from 'drizzle-orm'
+
 import { db } from '@/db/db'
 import { projectsTable } from '@/db/schema/projects-schema'
-import { eq, and, sql, desc, asc } from 'drizzle-orm'
-import { SQL } from 'drizzle-orm/sql'
-
-
 import { createProjectAction } from '@/actions/db/projects-actions'
+import { companyTable } from '@/db/schema/company-schema'
+
 import {
   successResponse,
   errorResponse,
@@ -13,68 +34,38 @@ import {
   logApiRequest,
   validateRequiredFields
 } from '@/app/api/api-utils'
-import { withCors } from '@/lib/cors'
-import { withValidation } from '@/lib/middleware/validation'
 
-// @ts-nocheck
-// Force this API route to be dynamic
+import { withCors } from '@/lib/cors'
+
+// -------------------------------------------------------------------------------------
+// NEXT.JS 13 route handlers: GET, POST, OPTIONS
+// We wrap them with CORS as in your existing code base
+// -------------------------------------------------------------------------------------
+
+// We keep dynamic (disable route segment caching)
 export const dynamic = 'force-dynamic';
 
-// Helper function to handle DB connection errors
-function handleDbConnectionError(error: any) {
-  console.error('Database connection error:', error);
-
-  // Check if it's a connection error
-  if (
-    error?.code === 'ENOTFOUND' ||
-    error?.message?.includes('getaddrinfo') ||
-    error?.message?.includes('connect ETIMEDOUT') ||
-    error?.message?.includes('connection timeout') ||
-    error?.code === 'SELF_SIGNED_CERT_IN_CHAIN' ||
-    error?.code === 'CERT_HAS_EXPIRED'
-  ) {
-    // Construct database URL info for debugging (hide password)
-    const dbUrlInfo = process.env.DATABASE_URL
-      ? `${process.env.DATABASE_URL.split('@')[0].split(':')[0]}:****@${process.env.DATABASE_URL.split('@')[1]}`
-      : 'DATABASE_URL not set';
-
-    return serverErrorResponse({
-      message: `Failed to connect to DigitalOcean PostgreSQL database. Environment: ${process.env.NODE_ENV || 'unknown'}`,
-      details: {
-        url: dbUrlInfo,
-        error: error.message,
-        code: error.code
-      }
-    });
-  }
-
-  // Generic server error
-  return serverErrorResponse(error);
-}
-
 /**
-  • GET /api/projects
-  • Fetches (optionally filtered) projects
-  • Query params:
-  •   status: filter by project status (open, closed, etc.)
-  •   skill: filter by required skill
-  •   minPrize: minimum prize amount
-  •   maxPrize: maximum prize amount
-  •   owner: filter by project owner wallet
-  •   sort: sort field (created, prize, name)
-  •   order: sort order (asc, desc)
-  •   limit: limit number of results (default 20, max 100)
-  •   offset: pagination offset
-*/
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │  GET /api/projects                                                    │
+  │                                                                       │
+  │  Lists projects, optionally filtered by query parameters:             │
+  │   - status       => e.g. ?status=open                                 │
+  │   - skill        => e.g. ?skill=React                                 │
+  │   - minPrize     => e.g. ?minPrize=50                                 │
+  │   - maxPrize     => e.g. ?maxPrize=150                                │
+  │   - owner        => e.g. ?owner=0xabc... (projectOwner)               │
+  │   - sort         => 'created', 'prize', 'name'                        │
+  │   - order        => 'asc' or 'desc'                                   │
+  │   - limit        => number (default 20, max 100)                      │
+  │   - offset       => pagination offset                                 │
+  └─────────────────────────────────────────────────────────────────────────┘
+ */
 async function getProjects(req: NextRequest) {
   try {
-    // Log the request
     logApiRequest('GET', '/api/projects', req.ip || 'unknown')
-    console.log(`[API] Database URL: ${process.env.DATABASE_URL?.replace(/:[^:]*@/, ':****@')}`);
-    console.log(`[API] Environment: ${process.env.NODE_ENV || 'unknown'}`);
 
     const { searchParams } = new URL(req.url)
-    // Query parameters
     const status = searchParams.get('status')
     const skill = searchParams.get('skill')
     const minPrize = searchParams.get('minPrize')
@@ -85,144 +76,434 @@ async function getProjects(req: NextRequest) {
     const limitParam = searchParams.get('limit')
     const offsetParam = searchParams.get('offset')
 
-    // Parse and validate limit/offset
-    const limit = limitParam ? Math.min(parseInt(limitParam), 100) : 20
-    const offset = offsetParam ? parseInt(offsetParam) : 0
+    // Parse limit & offset
+    const limit = limitParam ? Math.min(parseInt(limitParam, 10), 100) : 20
+    const offset = offsetParam ? parseInt(offsetParam, 10) : 0
 
-    // Build query conditions
-    const conditions: SQL[] = []
+    // Build the query with proper type casting
+    let query = db.select().from(projectsTable) as any
+
+    // Apply filters one by one
     if (status) {
-      conditions.push(eq(projectsTable.projectStatus, status))
+      query = query.where(eq(projectsTable.projectStatus, status))
     }
+    
     if (minPrize) {
-      conditions.push(sql`${projectsTable.prizeAmount} >= ${minPrize}`)
+      query = query.where(sql`${projectsTable.prizeAmount} >= ${minPrize}`)
     }
+    
     if (maxPrize) {
-      conditions.push(sql`${projectsTable.prizeAmount} <= ${maxPrize}`)
+      query = query.where(sql`${projectsTable.prizeAmount} <= ${maxPrize}`)
     }
+    
     if (skill) {
-      conditions.push(sql`${projectsTable.requiredSkills} ILIKE ${'%' + skill + '%'}`)
+      query = query.where(sql`${projectsTable.requiredSkills} ILIKE ${'%' + skill + '%'}`)
     }
+    
     if (owner) {
-      conditions.push(eq(projectsTable.projectOwner, owner))
+      query = query.where(eq(projectsTable.projectOwner, owner))
     }
 
-    // Build sorting
-    let orderBy
+    // Sorting
     switch (sortBy) {
       case 'prize':
-        orderBy = sortOrder === 'asc' ? asc(projectsTable.prizeAmount) : desc(projectsTable.prizeAmount)
+        query = query.orderBy(sortOrder === 'asc' ? asc(projectsTable.prizeAmount) : desc(projectsTable.prizeAmount))
         break
       case 'name':
-        orderBy = sortOrder === 'asc' ? asc(projectsTable.projectName) : desc(projectsTable.projectName)
+        query = query.orderBy(sortOrder === 'asc' ? asc(projectsTable.projectName) : desc(projectsTable.projectName))
         break
       case 'created':
       default:
-        orderBy = sortOrder === 'asc' ? asc(projectsTable.createdAt) : desc(projectsTable.createdAt)
+        query = query.orderBy(sortOrder === 'asc' ? asc(projectsTable.createdAt) : desc(projectsTable.createdAt))
+        break
     }
 
-    // Execute query with all parameters
-    const query = db.select().from(projectsTable)
+    // Apply limit and offset
+    query = query.limit(limit).offset(offset)
 
-    // Add conditions if any
-    if (conditions.length > 0) {
-      query.where(conditions.length === 1 ? conditions[0] : and(...conditions))
-    }
+    // Execute the query
+    const rows = await query
 
-    // Add sorting, limit and offset
-    const rows = await query.orderBy(orderBy).limit(limit).offset(offset)
-
-    // Create response with cache headers
+    // Return success
     const response = successResponse(rows, undefined, 200)
-    // Add cache control headers (cache for 1 minute, public)
+    // Optionally set Cache-Control if you like
     response.headers.set('Cache-Control', 'public, max-age=60')
     return response
   } catch (err) {
-    return handleDbConnectionError(err)
+    console.error('[GET /api/projects] error:', err)
+    return serverErrorResponse(err)
   }
 }
 
 /**
-  • POST /api/projects
-  • JSON body:
-  • {
-  •   "projectName": string,
-  •   "projectDescription": string,
-  •   "projectLink": string,
-  •   "prizeAmount": number,
-  •   "projectOwner": string,
-  •   "requiredSkills": string[]
-  • }
-*/
-async function createProject(req: NextRequest, parsedBody?: any) {
+  ┌───────────────────────────────────────────────────────────────────────────────────────┐
+  │ POST /api/projects                                                                  │
+  │                                                                                     │
+  │ This single POST endpoint handles two possible flows:                               │
+  │  1) Create a new project (if the request body has "projectName", "projectOwner",    │
+  │     etc. - basically the required fields for creation).                             │
+  │  2) If the body is missing project-creation fields but has filtering fields such    │
+  │     as "status", "skills", etc., then we treat it as a "filter" request.            │
+  │                                                                                     │
+  │ Filter request body fields:                                                         │
+  │   {                                                                                 │
+  │     "status": "open" | "closed",                                                   │
+  │     "skills": "HTML, CSS, JavaScript",                                             │
+  │     "sortBy": "reward" | "deadline" | "createdAt",                                  │
+  │     "sortOrder": "asc" | "desc",                                                    │
+  │     "page": "1",                                                                    │
+  │     "limit": "10"                                                                   │
+  │   }                                                                                 │
+  │                                                                                     │
+  │ Create request body fields (example):                                               │
+  │   {                                                                                 │
+  │     "projectName": "Cool Project",                                                 │
+  │     "projectDescription": "Some description",                                       │
+  │     "projectOwner": "myname.eth",   // or 0x.. if still in transition               │
+  │     "prizeAmount": 100,                                                             │
+  │     "requiredSkills": "React,NodeJS",                                               │
+  │     "completionSkills": "Docker,CI/CD"                                              │
+  │   }                                                                                 │
+  └───────────────────────────────────────────────────────────────────────────────────────┘
+ */
+async function postProjectsHandler(req: NextRequest) {
   try {
-    // Log the request
-    logApiRequest('POST', '/api/projects', req.ip || 'unknown')
+    // 1) Attempt to parse request body
+    const body = await req.json().catch(() => ({}))
 
-    // IMPORTANT fix: parse the actual request JSON if no parsedBody was provided
-    const body = parsedBody || await req.json();
+    // 2) Detect if it looks like a "create project" request
+    //    We'll check for "projectName" as a required field in creation
+    //    If found, we do the "createProject" logic
+    if (body.projectName) {
+      // ---------------------------------------------------------
+      // CREATE PROJECT FLOW
+      // ---------------------------------------------------------
+      logApiRequest('POST', '/api/projects => createProject', req.ip || 'unknown')
+
+      // Validate required fields for creation
+      const validation = validateRequiredFields(body, ['projectName', 'projectOwner'])
+      if (!validation.isValid) {
+        return errorResponse(
+          `Missing required fields: ${validation.missingFields.join(', ')}`,
+          400,
+          validation.missingFields.reduce((acc, field) => {
+            acc[field] = [`${field} is required`];
+            return acc;
+          }, {} as Record<string, string[]>)
+        )
+      }
+
+      // We call the existing createProjectAction
+      const result = await createProjectAction({
+        walletAddress: body.walletAddress || body.projectOwner, // support both formats
+        projectName: body.projectName,
+        projectDescription: body.projectDescription,
+        projectRepo: body.projectRepo || body.projectLink,
+        prizeAmount: body.prizeAmount,
+        requiredSkills: Array.isArray(body.requiredSkills)
+          ? body.requiredSkills.join(', ')
+          : (body.requiredSkills || ''),
+        completionSkills: body.completionSkills,
+        deadline: body.deadline, // Pass through as is - validation happens in createProjectAction
+      })
+
+      if (!result.isSuccess) {
+        // If it failed because of validation or other issues
+        return errorResponse(result.message || 'Failed to create project', 400)
+      }
+
+      return successResponse(result.data, 'Project created successfully')
+    }
+
+    // ---------------------------------------------------------
+    // FILTERING FLOW (no 'projectName' => treat as filter)
+    // ---------------------------------------------------------
+    logApiRequest('POST', '/api/projects => filterProjects', req.ip || 'unknown')
+
+    // Read fields from the request body
+    const tab = body.tab || 'all'
+    const status = body.status || ''
+    const skills = body.skills || ''
+    const sortBy = body.sortBy || 'createdAt'  // fallback to createdAt
+    const sortOrder = body.sortOrder || 'desc'
+    const page = parseInt(body.page || '1', 10)
+    const limit = parseInt(body.limit || '10', 10)
+    const offset = (page - 1) * limit
+
+    // Build query with proper type casting
+    let query = db.select().from(projectsTable) as any
+
+    // if status provided
+    if (status) {
+      query = query.where(eq(projectsTable.projectStatus, status))
+    }
+
+    // if skills provided => require each skill to appear in requiredSkills
+    if (skills) {
+      const skillsList = skills.split(',').map((s: string) => s.trim().toLowerCase())
+      
+      for (const skill of skillsList) {
+        query = query.where(
+          sql`${projectsTable.requiredSkills} ILIKE ${'%' + skill + '%'}`
+        )
+      }
+    }
+
+    // Apply sorting
+    if (sortBy === 'reward') {
+      query = query.orderBy(
+        sortOrder === 'asc' ? asc(projectsTable.prizeAmount) : desc(projectsTable.prizeAmount)
+      )
+    } else if (sortBy === 'deadline') {
+      query = query.orderBy(
+        sortOrder === 'asc' ? asc(projectsTable.deadline) : desc(projectsTable.deadline)
+      )
+    } else {
+      // default is createdAt
+      query = query.orderBy(
+        sortOrder === 'asc' ? asc(projectsTable.createdAt) : desc(projectsTable.createdAt)
+      )
+    }
+
+    // Apply pagination
+    query = query.limit(limit).offset(offset)
+
+    // Execute query
+    const rows = await query
+
+    // Return formatted response
+    return NextResponse.json({
+      isSuccess: true,
+      data: rows.map((p) => ({
+        ...p,
+        // Convert deadline to ISO string if present
+        deadline: p.deadline ? p.deadline.toISOString() : null
+      }))
+    }, { status: 200 })
+
+  } catch (error) {
+    console.error('[POST /api/projects] error:', error)
+    return NextResponse.json(
+      { isSuccess: false, message: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+
+/**
+ * PUT /api/projects
+ * Updates an existing project
+ * 
+ * Request body should contain:
+ * - projectId: string (required)
+ * - projectName: string (required)
+ * - projectDescription?: string
+ * - prizeAmount?: string | number
+ * - requiredSkills?: string
+ * - completionSkills?: string
+ * - projectRepo?: string
+ * - walletAddress: string (required for authorization)
+ * - walletEns?: string (optional, for ENS support)
+ */
+async function putProjectHandler(req: NextRequest) {
+  try {
+    const body = await req.json()
 
     // Validate required fields
-    const validation = validateRequiredFields(body, ['projectName', 'projectOwner'])
+    const validation = validateRequiredFields(body, ['projectId', 'projectName', 'walletAddress'])
     if (!validation.isValid) {
       return errorResponse(
         `Missing required fields: ${validation.missingFields.join(', ')}`,
-        400,
-        validation.missingFields.reduce((acc, field) => {
-          acc[field] = [`${field.charAt(0).toUpperCase() + field.slice(1).replace('project', '').replace('Project', '')} is required`];
-          return acc;
-        }, {} as Record<string, string[]>)
+        400
       )
     }
 
-    // Validate wallet address format
-    if (!body.projectOwner.startsWith('0x') || body.projectOwner.length !== 42) {
-      return errorResponse(
-        'Invalid wallet address format',
-        400,
-        { projectOwner: ['Wallet address must be a valid Ethereum address starting with 0x'] }
-      )
+    // Find the project first to verify ownership
+    const [project] = await db
+      .select()
+      .from(projectsTable)
+      .where(eq(projectsTable.id, body.projectId))
+      .limit(1)
+
+    if (!project) {
+      return errorResponse('Project not found', 404)
     }
 
-    // Format the skills if they are provided as an array
-    let requiredSkills = body.requiredSkills
-    if (Array.isArray(requiredSkills)) {
-      requiredSkills = requiredSkills.join(', ')
+    // Verify ownership - check both wallet address and ENS
+    const isOwner = 
+      project.projectOwner.toLowerCase() === body.walletAddress.toLowerCase() ||
+      (body.walletEns && project.projectOwner.toLowerCase() === body.walletEns.toLowerCase())
+
+    if (!isOwner) {
+      return errorResponse('Only the project owner can update this project', 403)
     }
 
-    // Call the server action to create the project
-    const result = await createProjectAction({
+    // Prepare update data
+    const updateData = {
       projectName: body.projectName,
-      projectDescription: body.projectDescription,
-      projectRepo: body.projectLink || body.projectRepo,
-      prizeAmount: body.prizeAmount ? Number(body.prizeAmount) : undefined,
-      walletAddress: body.projectOwner,
-      requiredSkills,
-      completionSkills: body.completionSkills,
-    })
-
-    if (!result.isSuccess) {
-      // Map detailed error messages based on the failure reason
-      if (result.message?.includes('owner does not exist')) {
-        return errorResponse('Project owner does not have a registered profile', 400, {
-          projectOwner: ['This wallet address is not registered with a company profile']
-        })
-      }
-      // If there's a DB error or other server-side issue
-      return serverErrorResponse(new Error(result.message || 'Failed to create project'))
+      projectDescription: body.projectDescription || '',
+      prizeAmount: body.prizeAmount?.toString() || '0',
+      requiredSkills: body.requiredSkills || '',
+      completionSkills: body.completionSkills || '',
+      projectRepo: body.projectRepo || '',
+      updatedAt: new Date()
     }
 
-    return successResponse(result.data, 'Project created successfully')
+    // Update the project
+    const [updated] = await db
+      .update(projectsTable)
+      .set(updateData)
+      .where(eq(projectsTable.id, body.projectId))
+      .returning()
+
+    return successResponse(updated, 'Project updated successfully')
   } catch (error) {
-    console.error('Project creation error:', error)
+    console.error('[PUT /api/projects] error:', error)
     return serverErrorResponse(error)
   }
 }
 
-// Apply CORS to route handlers
-export const GET = withCors(getProjects);
-export const POST = withCors(createProject);
+/**
+ * DELETE /api/projects
+ * Deletes a project if the caller is the owner and the project isn't assigned
+ * 
+ * Request body should contain:
+ * - projectId: string (required)
+ * - walletEns?: string (primary way to identify owner)
+ * - walletAddress?: string (backup/alternative way to identify owner)
+ * 
+ * At least one of walletEns or walletAddress must be provided
+ */
+async function deleteProjectHandler(req: NextRequest) {
+  try {
+    const body = await req.json()
+    const { projectId, walletAddress, walletEns } = body
+
+    // Validate projectId
+    if (!projectId) {
+      return errorResponse('Missing projectId in request body', 400)
+    }
+
+    // Validate that at least one identification method is provided
+    if (!walletAddress && !walletEns) {
+      return errorResponse('Must provide either walletEns or walletAddress', 400)
+    }
+
+    // Find the project first
+    const [project] = await db
+      .select()
+      .from(projectsTable)
+      .where(eq(projectsTable.id, projectId))
+      .limit(1)
+
+    if (!project) {
+      return errorResponse('Project not found', 404)
+    }
+
+    // Cannot delete if project is assigned
+    if (project.assignedFreelancer) {
+      return errorResponse('Cannot delete a project that has been assigned', 400)
+    }
+
+    // Check ownership using multiple methods
+    let isAuthorized = false;
+
+    // Method 1: Direct match with walletEns (primary method)
+    if (walletEns && project.projectOwner.toLowerCase() === walletEns.toLowerCase()) {
+      isAuthorized = true;
+    }
+    // Method 2: Direct match with walletAddress
+    else if (walletAddress && project.projectOwner.toLowerCase() === walletAddress.toLowerCase()) {
+      isAuthorized = true;
+    }
+    // Method 3: ENS lookup if project owner is a wallet address
+    else if (walletEns) {
+      const [company] = await db
+        .select()
+        .from(companyTable)
+        .where(eq(companyTable.walletEns, walletEns.toLowerCase()))
+        .limit(1)
+
+      if (company && company.walletAddress.toLowerCase() === project.projectOwner.toLowerCase()) {
+        isAuthorized = true;
+      }
+    }
+    // Method 4: Reverse lookup if project owner is an ENS
+    else if (walletAddress) {
+      const [company] = await db
+        .select()
+        .from(companyTable)
+        .where(eq(companyTable.walletAddress, walletAddress.toLowerCase()))
+        .limit(1)
+
+      if (company && company.walletEns.toLowerCase() === project.projectOwner.toLowerCase()) {
+        isAuthorized = true;
+      }
+    }
+
+    if (!isAuthorized) {
+      return errorResponse('Only the project owner can delete this project', 403)
+    }
+
+    // Perform the delete
+    await db
+      .delete(projectsTable)
+      .where(eq(projectsTable.id, projectId))
+
+    return successResponse(null, 'Project deleted successfully')
+  } catch (error) {
+    console.error('[DELETE /api/projects] error:', error)
+    return serverErrorResponse(error)
+  }
+}
+
+// ----------------------------------------------------------
+// Exports: Next.js route handlers
+// ----------------------------------------------------------
+
+/**
+ * GET /api/projects => calls getProjects
+ */
+export const GET = withCors(getProjects)
+
+/**
+ * POST /api/projects => can CREATE or FILTER (as described above)
+ */
+export const POST = withCors(postProjectsHandler)
+
+/**
+ * PUT /api/projects
+ * Updates an existing project
+ * 
+ * Request body should contain:
+ * - projectId: string (required)
+ * - projectName: string (required)
+ * - projectDescription?: string
+ * - prizeAmount?: string | number
+ * - requiredSkills?: string
+ * - completionSkills?: string
+ * - projectRepo?: string
+ * - walletAddress: string (required for authorization)
+ * - walletEns?: string (optional, for ENS support)
+ */
+export const PUT = withCors(putProjectHandler)
+
+/**
+ * DELETE /api/projects
+ * Deletes a project if the caller is the owner and the project isn't assigned
+ * 
+ * Request body should contain:
+ * - projectId: string (required)
+ * - walletEns?: string (primary way to identify owner)
+ * - walletAddress?: string (backup/alternative way to identify owner)
+ * 
+ * At least one of walletEns or walletAddress must be provided
+ */
+export const DELETE = withCors(deleteProjectHandler)
+
+/**
+ * OPTIONS /api/projects => needed for CORS preflight
+ */
 export const OPTIONS = withCors(async () => {
-  // Empty handler, the CORS middleware will create the proper OPTIONS response
-  return new Response(null, { status: 204 });
-});
+  return new Response(null, { status: 204 })
+})

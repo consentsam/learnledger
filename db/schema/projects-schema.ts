@@ -15,6 +15,7 @@
  * - completionSkills
  * - projectRepo (GitHub or repo link)
  * - projectStatus (default "open")
+ * - deadline (optional completion date)
  *
  * @dependencies
  * - drizzle-orm/pg-core for columns
@@ -24,15 +25,15 @@
  * Make sure you have run a migration or ALTER statement to add "completion_skills" and "required_skills" columns if you didn't have them before.
  */
 
-import { InferModel } from 'drizzle-orm'
-import { pgTable, text, numeric, uuid, timestamp } from 'drizzle-orm/pg-core'
+import { pgTable, varchar, text, timestamp } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
 
 export const projectsTable = pgTable('projects', {
-  id: uuid('id').defaultRandom().primaryKey(),
-
+  id: varchar('id', { length: 36 }).default(sql`gen_random_uuid()`).primaryKey(),
+  
   projectName: text('project_name').notNull(),
   projectDescription: text('project_description'),
-  prizeAmount: numeric('prize_amount', { precision: 10, scale: 2 }).default('0'),
+  prizeAmount: varchar('prize_amount', { length: 32 }), // stored as string
   projectStatus: text('project_status').default('open').notNull(),
   projectOwner: text('project_owner').notNull(),
 
@@ -51,6 +52,12 @@ export const projectsTable = pgTable('projects', {
   assignedFreelancer: text('assigned_freelancer'),
   projectRepo: text('project_repo'),
 
+  /**
+   * @field deadline
+   * Optional timestamp for when the project needs to be completed
+   */
+  deadline: timestamp('deadline', { mode: 'date' }),
+
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at')
     .defaultNow()
@@ -58,5 +65,5 @@ export const projectsTable = pgTable('projects', {
     .$onUpdate(() => new Date()),
 })
 
-export type Project = InferModel<typeof projectsTable>
-export type NewProject = InferModel<typeof projectsTable, 'insert'>
+export type Project = typeof projectsTable.$inferSelect
+export type NewProject = typeof projectsTable.$inferInsert

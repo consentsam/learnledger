@@ -6,7 +6,7 @@
  * Defines the "project_submissions" table for storing freelancer PR submissions.
  * Each submission belongs to a single project, identified by `projectId`,
  * and includes the freelancer's wallet address, plus the PR link, plus a new
- * `isMerged` field to indicate whether the submission’s PR has been merged.
+ * `isMerged` field to indicate whether the submission's PR has been merged.
  */
 
 import { InferModel } from 'drizzle-orm'
@@ -35,6 +35,16 @@ export const projectSubmissionsTable = pgTable('project_submissions', {
    * Updated by GitHub webhook or manual logic if you want.
    */
   isMerged: boolean('is_merged').default(false).notNull(),
+
+  /**
+   * @field status
+   * Tracks the review status of the submission.
+   * Can be 'pending', 'approved', or 'rejected'.
+   */
+  status: text('status').default('pending').notNull(),
+
+  // Timestamp of last update
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
 
   // Timestamp of creation
   createdAt: timestamp('created_at').defaultNow().notNull(),

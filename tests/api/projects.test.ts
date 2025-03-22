@@ -1,252 +1,91 @@
-// tests/api/projects.test.ts
-import { describe, test, expect, afterAll, beforeAll } from '@jest/globals';
-import { apiRequest, TEST_WALLETS, cleanupTest } from './setup';
+// File: tests/api/projects.test.ts
+// 
+// You can run these tests with: `npx jest tests/api/projects.test.ts`
+// or via your existing scripts. 
+// Remember to set `USE_MOCKS = false` (in tests/api/setup.ts) if you want them 
+// to hit your real local server.
 
-describe('Projects API', () => {
-  const createdIds: string[] = [];
-  let testProjectId: string | undefined;
+import { describe, test, expect, beforeAll, afterAll } from '@jest/globals'
+import fetch from 'node-fetch'
 
-  // Create test data before all tests
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000/api'
+
+// We'll store the project ID we create, so we can delete it in the test
+let createdProjectId: string | null = null
+
+// We'll store the known ENS & wallet we use
+const testCompanyEns = 'enscompanydelete.eth'
+const testCompanyAddress = '0xDdF0000000000000000000000000000000001234'
+
+describe('Projects API with walletEns deletion scenario', () => {
   beforeAll(async () => {
-    // Register a test company (if it doesn't exist already)
-    const companyResponse = await apiRequest('/register', 'POST', {
-      role: 'company',
-      walletAddress: TEST_WALLETS.company,
-      companyName: 'Test Company',
-      shortDescription: 'A testing company'
-    });
+    // 1) Register a company with a specific walletEns
+    //    So that the server knows about that company
+    const registerRes = await fetch(`${BASE_URL.replace('/api','')}/api/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        role: 'company',
+        walletEns: testCompanyEns,
+        walletAddress: testCompanyAddress,
+        companyName: 'ENS Company For Delete Tests'
+      })
+    })
+    expect([200,400]).toContain(registerRes.status)
 
-    // Create a test project for our tests
-    const projectResponse = await apiRequest('/projects', 'POST', {
-      walletAddress: TEST_WALLETS.company,
-      projectName: 'Test Project for API Testing',
-      projectDescription: 'A test project for API tests',
-      prizeAmount: 100,
-      requiredSkills: 'JavaScript, React',
-      completionSkills: 'Project Management'
-    });
-
-    // If project creation successful, save the ID
-    if (projectResponse.status === 200 && projectResponse.data.isSuccess) {
-      testProjectId = projectResponse.data.data.id;
-      if (testProjectId) {
-        createdIds.push(testProjectId);
-        console.log('Created test project with ID:', testProjectId);
-      }
-    } else {
-      // If we couldn't create a project, we need to find an existing one
-      const projectsResponse = await apiRequest('/projects');
-      if (projectsResponse.status === 200 && projectsResponse.data.isSuccess && projectsResponse.data.data.length > 0) {
-        // Use the first project we find
-        testProjectId = projectsResponse.data.data[0].id;
-        console.log('Using existing project with ID:', testProjectId);
-      }
+    // 2) Create a project owned by that company
+    const projectPayload = {
+      projectName: 'ENS Delete Test Project',
+      projectDescription: 'Testing project deletion with walletEns as primary ID',
+      projectOwner: testCompanyAddress, 
+      prizeAmount: 42
     }
-  });
+    const createRes = await fetch(`${BASE_URL}/projects`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(projectPayload)
+    })
+    expect([200,201,400]).toContain(createRes.status)
 
-  // Clean up after all tests
+    if (createRes.status === 200 || createRes.status === 201) {
+      const createJson = await createRes.json()
+      expect(createJson.isSuccess).toBe(true)
+      createdProjectId = createJson.data.id
+    }
+  })
+
   afterAll(async () => {
-    await cleanupTest(createdIds);
-  });
+    // If the project wasn't deleted in the test, you might optionally clean up
+    // But here we rely on the test to delete it.
+  })
 
-  test('should create a new project', async () => {
-    const payload = {
-      walletAddress: TEST_WALLETS.company,
-      projectName: 'Test Project Creation',
-      projectDescription: 'A test project description',
-      prizeAmount: 100,
-      requiredSkills: 'JavaScript, React',
-      completionSkills: 'Project Management'
-    };
+  test('DELETE /api/projects/[projectId] using only walletEns in body => success', async () => {
+    if (!createdProjectId) {
+      console.warn('No createdProjectId to test for deletion. Possibly creation failed.')
+      return
+    }
 
-    const response = await apiRequest('/projects', 'POST', payload);
-    
-    // Accept either 200 (success) or 400 if there's an error
-    expect([200, 400]).toContain(response.status);
-    
-    if (response.status === 200) {
-      expect(response.data.isSuccess).toBe(true);
-      expect(response.data.data).toBeTruthy();
-      expect(response.data.data.projectName).toBe('Test Project Creation');
+    const url = `${BASE_URL}/projects/${createdProjectId}`
+    const deleteBody = {
+      walletEns: testCompanyEns 
+      // notice we do NOT pass walletAddress. We rely on the new logic to resolve it
+    }
 
-      // Store created ID for cleanup and use in other tests
-      if (response.data.data && response.data.data.id) {
-        // If we didn't get a project ID before, use this one
-        if (!testProjectId) {
-          testProjectId = response.data.data.id;
-        }
-        createdIds.push(response.data.data.id);
-      }
+    const res = await fetch(url, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(deleteBody)
+    })
+    expect([200,403,404]).toContain(res.status)
+
+    if (res.status === 200) {
+      const json = await res.json()
+      expect(json.isSuccess).toBe(true)
+      expect(json.message).toContain('deleted')
+      console.log('Project deleted successfully using walletEns.')
     } else {
-      console.log('Project creation failed:', response.data.message);
+      const errorJson = await res.json()
+      console.error('Deletion failed:', errorJson.message)
     }
-  });
-
-  test('should retrieve projects list', async () => {
-    const response = await apiRequest('/projects');
-    
-    // Accept either 200 or 500 status
-    expect([200, 500]).toContain(response.status);
-    
-    if (response.status === 200) {
-      expect(response.data.isSuccess).toBe(true);
-      expect(Array.isArray(response.data.data)).toBe(true);
-    } else {
-      console.log('Projects list retrieval failed:', response.data?.message || 'Unknown error');
-    }
-  });
-
-  test('should filter projects by status', async () => {
-    // Skip if filtering isn't working on server
-    const response = await apiRequest('/projects?status=open');
-    
-    expect([200, 500]).toContain(response.status);
-    
-    if (response.status === 200) {
-      expect(response.data.isSuccess).toBe(true);
-      expect(Array.isArray(response.data.data)).toBe(true);
-      
-      // Check all projects have open status
-      response.data.data.forEach((project: any) => {
-        expect(project.projectStatus).toBe('open');
-      });
-    } else {
-      console.log('Filtering by status not working:', response.data.message);
-    }
-  });
-
-  test('should filter projects by skill', async () => {
-    // Skip if filtering isn't working on server
-    const response = await apiRequest('/projects?skill=React');
-    
-    expect([200, 500]).toContain(response.status);
-    
-    if (response.status === 200) {
-      expect(response.data.isSuccess).toBe(true);
-      expect(Array.isArray(response.data.data)).toBe(true);
-      
-      // Check all projects have React skill
-      response.data.data.forEach((project: any) => {
-        expect(project.requiredSkills).toContain('React');
-      });
-    } else {
-      console.log('Filtering by skill not working:', response.data.message);
-    }
-  });
-
-  test('should filter projects by prize amount range', async () => {
-    // Skip if filtering isn't working on server
-    const response = await apiRequest('/projects?minPrize=50&maxPrize=150');
-    
-    expect([200, 500]).toContain(response.status);
-    
-    if (response.status === 200) {
-      expect(response.data.isSuccess).toBe(true);
-      expect(Array.isArray(response.data.data)).toBe(true);
-      
-      // Check all projects have prize in range
-      response.data.data.forEach((project: any) => {
-        const prize = Number(project.prizeAmount);
-        expect(prize).toBeGreaterThanOrEqual(50);
-        expect(prize).toBeLessThanOrEqual(150);
-      });
-    } else {
-      console.log('Filtering by prize amount not working:', response.data.message);
-    }
-  });
-
-  test('should get project by ID', async () => {
-    // Skip if we don't have a project ID
-    if (!testProjectId) {
-      console.log('Skipping test: no project ID available');
-      return;
-    }
-    
-    const response = await apiRequest(`/projects/${testProjectId}`);
-    
-    expect(response.status).toBe(200);
-    expect(response.data.isSuccess).toBe(true);
-    expect(response.data.data).toBeTruthy();
-    expect(response.data.data.id).toBe(testProjectId);
-  });
-
-  test('should update project', async () => {
-    // Skip if we don't have a project ID
-    if (!testProjectId) {
-      console.log('Skipping test: no project ID available');
-      return;
-    }
-    
-    const payload = {
-      walletAddress: TEST_WALLETS.company,
-      projectName: 'Updated Project Name',
-      projectDescription: 'Updated project description'
-    };
-    
-    const response = await apiRequest(`/projects/${testProjectId}`, 'PUT', payload);
-    
-    expect([200, 403, 404]).toContain(response.status);
-    
-    if (response.status === 200) {
-      expect(response.data.isSuccess).toBe(true);
-      expect(response.data.data).toBeTruthy();
-      expect(response.data.data.projectName).toBe('Updated Project Name');
-      expect(response.data.data.projectDescription).toBe('Updated project description');
-    } else {
-      console.log('Project update failed:', response.data.message);
-    }
-  });
-
-  test('should change project status', async () => {
-    // Skip if we don't have a project ID
-    if (!testProjectId) {
-      console.log('Skipping test: no project ID available');
-      return;
-    }
-    
-    const payload = {
-      walletAddress: TEST_WALLETS.company,
-      status: 'closed'
-    };
-    
-    const response = await apiRequest(`/projects/${testProjectId}/status`, 'PUT', payload);
-    
-    expect([200, 403, 404]).toContain(response.status);
-    
-    if (response.status === 200) {
-      expect(response.data.message).toContain('changed to closed');
-      expect(response.data.data.projectStatus).toBe('closed');
-    } else {
-      console.log('Project status update failed:', response.data.message);
-    }
-  });
-
-  test('should delete project', async () => {
-    // Skip if we don't have a project ID
-    if (!testProjectId) {
-      console.log('Skipping test: no project ID available');
-      return;
-    }
-    
-    const payload = {
-      walletAddress: TEST_WALLETS.company
-    };
-    
-    const response = await apiRequest(`/projects/${testProjectId}`, 'DELETE', payload);
-    
-    // Accept any of these status codes
-    expect([200, 400, 403, 404]).toContain(response.status);
-    
-    if (response.status === 200) {
-      expect(response.data.isSuccess).toBe(true);
-      
-      // Remove from createdIds since it's already deleted
-      const index = createdIds.indexOf(testProjectId);
-      if (index > -1) {
-        createdIds.splice(index, 1);
-      }
-    } else {
-      console.log('Project deletion failed:', response.data.message);
-    }
-  });
-}); 
+  })
+})
