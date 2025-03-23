@@ -306,7 +306,7 @@ async function deleteUserProfile(req: NextRequest) {
     logApiRequest('DELETE', '/api/userProfile', req.ip || 'unknown');
 
     const body = await req.json();
-    const check = validateRequiredFields(body, ['role', 'walletAddress']);
+    const check = validateRequiredFields(body, ['role', 'walletAddress','walletEns']);
     if (!check.isValid) {
       return errorResponse(
         `Missing required fields: ${check.missingFields.join(', ')}`,
@@ -320,13 +320,13 @@ async function deleteUserProfile(req: NextRequest) {
     }
 
     const walletAddress = (body.walletAddress || '').toLowerCase().trim();
-
+    const walletEns = (body.walletEns || '').toLowerCase().trim();
     if (role === 'company') {
       // 1) find the company
       const [company] = await db
         .select()
         .from(companyTable)
-        .where(eq(companyTable.walletAddress, walletAddress))
+        .where(eq(companyTable.walletEns, walletEns))
         .limit(1);
 
       if (!company) {
@@ -336,14 +336,14 @@ async function deleteUserProfile(req: NextRequest) {
       // 2) delete any balances for this company
       await db
         .delete(userBalancesTable)
-        .where(eq(userBalancesTable.userId, walletAddress));
+        .where(eq(userBalancesTable.walletEns, walletEns));
 
       // (No submissions to delete for company, as companies typically do not submit.)
 
       // 3) finally, remove from company table
       await db
         .delete(companyTable)
-        .where(eq(companyTable.id, company.id));
+        .where(eq(companyTable.walletEns, walletEns));
 
       return NextResponse.json(
         {
@@ -362,7 +362,7 @@ async function deleteUserProfile(req: NextRequest) {
       const [freelancer] = await db
         .select()
         .from(freelancerTable)
-        .where(eq(freelancerTable.walletAddress, walletAddress))
+        .where(eq(freelancerTable.walletEns, walletEns))
         .limit(1);
 
       if (!freelancer) {
@@ -372,22 +372,22 @@ async function deleteUserProfile(req: NextRequest) {
       // 1) Remove all submissions from projectSubmissionsTable for this freelancer
       await db
         .delete(projectSubmissionsTable)
-        .where(eq(projectSubmissionsTable.freelancerAddress, walletAddress));
+        .where(eq(projectSubmissionsTable.freelancerWalletEns, walletEns));
 
       // 2) Remove user balances for this freelancer
       await db
         .delete(userBalancesTable)
-        .where(eq(userBalancesTable.userId, walletAddress));
+        .where(eq(userBalancesTable.walletEns, walletEns));
 
       // 3) Remove user skills bridging records
       await db
         .delete(userSkillsTable)
-        .where(eq(userSkillsTable.userId, walletAddress));
+        .where(eq(userSkillsTable.walletEns, walletEns));
 
       // 4) finally remove from the freelancer table
       await db
         .delete(freelancerTable)
-        .where(eq(freelancerTable.id, freelancer.id));
+        .where(eq(freelancerTable.walletEns, walletEns));
 
       return NextResponse.json(
         {
@@ -396,7 +396,7 @@ async function deleteUserProfile(req: NextRequest) {
           data: {
             walletAddress: freelancer.walletAddress,
             walletEns: freelancer.walletEns,
-            Id: freelancer.id,
+            id: freelancer.id,
           },
         },
         { status: 200 }

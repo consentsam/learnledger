@@ -47,6 +47,10 @@ import { projectSubmissionsTable } from '@/db/schema/project-submissions-schema'
 import { eq, sql } from 'drizzle-orm'
 
 async function handleCompanyDashboardMetrics(req: NextRequest) {
+  // Add request ID for correlation in logs
+  const requestId = Math.random().toString(36).substring(2, 10);
+  console.log(`[Company Metrics ${requestId}] Processing new request`);
+  
   try {
     let walletEns = ''
     let walletAddress = ''
@@ -58,16 +62,17 @@ async function handleCompanyDashboardMetrics(req: NextRequest) {
       walletEns = (url.searchParams.get('walletEns') || '').trim().toLowerCase()
       walletAddress = (url.searchParams.get('walletAddress') || '').trim().toLowerCase()
       timeframe = (url.searchParams.get('timeframe') || '24h').toLowerCase().trim()
+      console.log(`[Company Metrics ${requestId}] GET request with params:`, { walletEns, walletAddress, timeframe });
     } else {
       // POST
       try {
         const body = await req.json()
-        console.log('[Company Metrics] Received body:', JSON.stringify(body))
+        console.log(`[Company Metrics ${requestId}] Received body:`, JSON.stringify(body))
         walletEns = (body.walletEns || '').trim().toLowerCase()
         walletAddress = (body.walletAddress || '').trim().toLowerCase()
         timeframe = (body.timeframe || '24h').toLowerCase().trim()
       } catch (parseError) {
-        console.error('[Company Metrics] Error parsing request body:', parseError)
+        console.error(`[Company Metrics ${requestId}] Error parsing request body:`, parseError)
         return NextResponse.json({
           isSuccess: false,
           message: 'Invalid request body format'
@@ -75,7 +80,7 @@ async function handleCompanyDashboardMetrics(req: NextRequest) {
       }
     }
 
-    console.log('[Company Metrics] walletEns:', walletEns, ' walletAddress:', walletAddress)
+    console.log(`[Company Metrics ${requestId}] walletEns:`, walletEns, ' walletAddress:', walletAddress)
 
     // Check if either walletEns or walletAddress is provided
     if (!walletEns && !walletAddress) {
@@ -89,6 +94,7 @@ async function handleCompanyDashboardMetrics(req: NextRequest) {
     let companyRecord: any = null
 
     if (walletEns) {
+      console.log(`[Company Metrics ${requestId}] Looking up company by ENS:`, walletEns);
       const [byEns] = await db
         .select()
         .from(companyTable)
@@ -96,11 +102,13 @@ async function handleCompanyDashboardMetrics(req: NextRequest) {
         .limit(1)
       if (byEns) {
         companyRecord = byEns
+        console.log(`[Company Metrics ${requestId}] Found company by ENS`);
       }
     }
 
     // fallback if not found or empty
     if (!companyRecord && walletAddress) {
+      console.log(`[Company Metrics ${requestId}] Looking up company by wallet address:`, walletAddress);
       const [byAddr] = await db
         .select()
         .from(companyTable)
@@ -108,6 +116,7 @@ async function handleCompanyDashboardMetrics(req: NextRequest) {
         .limit(1)
       if (byAddr) {
         companyRecord = byAddr
+        console.log(`[Company Metrics ${requestId}] Found company by wallet address`);
       }
     }
 
@@ -120,12 +129,21 @@ async function handleCompanyDashboardMetrics(req: NextRequest) {
     }
 
     const finalWalletAddress = companyRecord.walletAddress.toLowerCase()
+    const finalWalletEns = companyRecord.walletEns.toLowerCase()
+    
+    console.log(`[Company Metrics ${requestId}] Using wallet details from DB record:`, {
+      finalWalletAddress,
+      finalWalletEns
+    })
 
-    // 3) find all projects
+    // 3) find all projects - use correct column names
+    console.log(`[Company Metrics ${requestId}] Querying projects for company: ${finalWalletEns}`);
     const allProjects = await db
       .select()
       .from(projectsTable)
-      .where(eq(projectsTable.projectOwner, finalWalletAddress))
+      .where(eq(projectsTable.projectOwnerWalletEns, finalWalletEns));
+
+    console.log(`[Company Metrics ${requestId}] Found ${allProjects.length} projects`);
 
     const totalProjects = allProjects.length
     const closedProjects = allProjects.filter(p => p.projectStatus === 'closed').length
@@ -133,6 +151,7 @@ async function handleCompanyDashboardMetrics(req: NextRequest) {
 
     if (totalProjects === 0) {
       // trivial
+      console.log(`[Company Metrics ${requestId}] No projects found, returning empty metrics`);
       return NextResponse.json({
         isSuccess: true,
         totalSubmissions: 0,
@@ -150,16 +169,33 @@ async function handleCompanyDashboardMetrics(req: NextRequest) {
       }, { status: 200 })
     }
 
-    // 4) find all submissions for these projects
-    const projectIds = allProjects.map(p => p.id)
-    const submissions = await db
-      .select()
-      .from(projectSubmissionsTable)
-      .where(sql`${projectSubmissionsTable.projectId} = ANY(${projectIds})`)
+    // 4) find all submissions for these projects - use safer query approach
+    // Extract project IDs using the correct field name
+    const projectIds = allProjects.map(p => p.projectId)
+    console.log(`[Company Metrics ${requestId}] Querying submissions for ${projectIds.length} projects:`, projectIds);
+    
+    let allSubmissions: any[] = [];
+    
+    // Query each project's submissions separately to avoid ANY syntax issues
+    for (const projectId of projectIds) {
+      try {
+        const projectSubmissions = await db
+          .select()
+          .from(projectSubmissionsTable)
+          .where(eq(projectSubmissionsTable.projectId, projectId));
+          
+        allSubmissions = [...allSubmissions, ...projectSubmissions];
+      } catch (subError) {
+        console.error(`[Company Metrics ${requestId}] Error querying submissions for project ${projectId}:`, subError);
+        // Continue with other projects
+      }
+    }
+    
+    console.log(`[Company Metrics ${requestId}] Found ${allSubmissions.length} total submissions`);
 
-    const totalSubmissions = submissions.length
-    const approvedSubmissions = submissions.filter(s => s.status === 'approved').length
-    const rejectedSubmissions = submissions.filter(s => s.status === 'rejected').length
+    const totalSubmissions = allSubmissions.length
+    const approvedSubmissions = allSubmissions.filter(s => s.status === 'approved').length
+    const rejectedSubmissions = allSubmissions.filter(s => s.status === 'rejected').length
 
     // 5) timeframe logic: parse "24h" -> hours
     let hours = 24
@@ -173,18 +209,28 @@ async function handleCompanyDashboardMetrics(req: NextRequest) {
 
     const now = new Date()
     const dateCutoff = new Date(now.getTime() - hours * 3600_000)
-    const recentSubs = submissions.filter(s => s.createdAt > dateCutoff)
+    const recentSubs = allSubmissions.filter(s => new Date(s.createdAt) > dateCutoff)
 
     // growth comparison: previous hours
     const prevPeriodStart = new Date(now.getTime() - 2 * hours * 3600_000)
     const prevPeriodEnd = dateCutoff
-    const prevSubs = submissions.filter(s => s.createdAt >= prevPeriodStart && s.createdAt <= prevPeriodEnd)
+    const prevSubs = allSubmissions.filter(s => 
+      new Date(s.createdAt) >= prevPeriodStart && new Date(s.createdAt) <= prevPeriodEnd
+    )
 
     const pullRequestsCount = recentSubs.length
     let growthPercent = 0
     if (prevSubs.length > 0) {
       growthPercent = ((pullRequestsCount - prevSubs.length) / prevSubs.length) * 100
     }
+
+    console.log(`[Company Metrics ${requestId}] Calculated metrics:`, {
+      totalSubmissions,
+      approvedSubmissions,
+      rejectedSubmissions,
+      pullRequestsCount,
+      growthPercent
+    });
 
     // 6) Return final JSON
     return NextResponse.json({
@@ -202,11 +248,41 @@ async function handleCompanyDashboardMetrics(req: NextRequest) {
       },
       statsUpdatedAt: new Date().toISOString()
     }, { status: 200 })
-  } catch (error) {
-    console.error('[company/dashboard/metrics] error:', error)
+  } catch (error: any) {
+    console.error(`[Company Metrics ${requestId}] Error:`, error)
+    
+    // Provide more detailed error information for debugging
+    let errorMessage = 'Internal server error';
+    let debugInfo: any = null;
+    
+    if (error.message && error.message.includes('syntax error')) {
+      errorMessage = 'Database syntax error. This might be due to a mismatch between code and schema.';
+      debugInfo = {
+        message: error.message,
+        stack: error.stack,
+        hint: 'Check column names in SQL queries against your schema definitions.',
+        requestId
+      };
+    } else if (error.code === '42P01') {
+      errorMessage = 'Relation does not exist error. Table might be missing.';
+      debugInfo = {
+        message: error.message,
+        details: error.detail || 'No additional details',
+        requestId
+      };
+    } else {
+      // Generic error handling
+      debugInfo = {
+        message: error.message || 'Unknown error',
+        stack: error.stack,
+        requestId
+      };
+    }
+    
     return NextResponse.json({
       isSuccess: false,
-      message: 'Internal server error'
+      message: errorMessage,
+      ...(debugInfo ? { debugInfo } : {})
     }, { status: 500 })
   }
 }

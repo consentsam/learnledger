@@ -21,13 +21,15 @@ interface ActionResult<T=any> {
  */
 export async function createSubmissionAction(params: {
   projectId: string;
-  freelancerWallet: string;
+  freelancerWalletEns: string;
+  freelancerWalletAddress: string;
   submissionText?: string;
   githubLink?: string;
 }): Promise<ActionResult> {
   try {
+    console.log('params =>', params)
     // Validate input
-    if (!params.projectId || !params.freelancerWallet) {
+    if (!params.projectId || !params.freelancerWalletAddress) {
       return {
         isSuccess: false,
         message: 'Missing required fields: projectId or freelancerWallet',
@@ -40,6 +42,7 @@ export async function createSubmissionAction(params: {
       .from(projectsTable)
       .where(eq(projectsTable.projectId, params.projectId))
       .limit(1);
+    console.log('project =>', project)
 
     if (!project) {
       return { isSuccess: false, message: 'Project not found' };
@@ -47,7 +50,7 @@ export async function createSubmissionAction(params: {
     if (project.projectStatus !== 'open') {
       return { isSuccess: false, message: 'Project is closed. Cannot submit.' };
     }
-    if (project.projectOwner.toLowerCase() === params.freelancerWallet.toLowerCase()) {
+    if (project.projectOwnerWalletAddress.toLowerCase() === params.freelancerWalletAddress.toLowerCase() || project.projectOwnerWalletEns.toLowerCase() === params.freelancerWalletEns.toLowerCase()) {
       return { isSuccess: false, message: 'Owner cannot submit to own project.' };
     }
 
@@ -55,7 +58,8 @@ export async function createSubmissionAction(params: {
     const reqSkillsStr = project.requiredSkills?.trim() || '';
     if (reqSkillsStr) {
       const requiredSkillNames = reqSkillsStr.split(',').map(s => s.trim()).filter(Boolean);
-      const userSkills = await fetchUserSkillsAction(params.freelancerWallet.toLowerCase());
+      const userSkills = await fetchUserSkillsAction(params.freelancerWalletEns.toLowerCase());
+      console.log('userSkills =>', userSkills)
       if (!userSkills.isSuccess) {
         return {
           isSuccess: false,
@@ -85,10 +89,11 @@ export async function createSubmissionAction(params: {
         submissionId,
         projectId: params.projectId,
         // newly added columns:
-        projectOwner: project.projectOwner,
+        projectOwnerWalletEns: project.projectOwnerWalletEns,
+        projectOwnerWalletAddress: project.projectOwnerWalletAddress,
         projectRepo: project.projectRepo || '',
-
-        freelancerAddress: params.freelancerWallet.toLowerCase(),
+        freelancerWalletEns: params.freelancerWalletEns,
+        freelancerWalletAddress: params.freelancerWalletAddress.toLowerCase(),
         prLink: params.githubLink ?? '',
         submissionText: params.submissionText ?? '',
         repoOwner: extractRepoOwner(params.githubLink || ''),

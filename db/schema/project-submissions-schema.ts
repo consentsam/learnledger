@@ -20,10 +20,12 @@ import { sql } from "drizzle-orm";
 export const projectSubmissionsTable = pgTable("project_submissions", {
   submissionId: text('submission_id').primaryKey(),
   projectId: text("project_id"), // references projectsTable.projectId
-  projectOwner: text("project_owner"), // new column to store the owner from projects
+  projectOwnerWalletEns: text("project_owner_wallet_ens"),
+  projectOwnerWalletAddress: text("project_owner_wallet_address"),
   projectRepo: text("project_repo"),   // new column to store the project repo
 
-  freelancerAddress: text("freelancer_address"),
+  freelancerWalletEns: text("freelancer_wallet_ens"),
+  freelancerWalletAddress: text("freelancer_wallet_address"),
   prLink: text("pr_link"),
   submissionText: text("submission_text"),
   repoOwner: text("repo_owner"),

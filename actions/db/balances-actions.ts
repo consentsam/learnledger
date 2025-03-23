@@ -34,9 +34,10 @@ import { userBalancesTable } from "@/db/schema/user-balances-schema"
  */
 interface UpdateBalanceParams {
   /**
-   * The user's wallet address or unique user ID.
+   * The user's ENS name 
    */
-  userId: string
+  walletEns: string
+  walletAddress: string
 
   /**
    * The amount to increment (or decrement if negative) the user's balance by.
@@ -75,19 +76,21 @@ export async function updateBalanceAction(
   params: UpdateBalanceParams
 ): Promise<UpdateBalanceResult> {
   const {
-    userId,
+    walletEns,
+    walletAddress,
     amount,
     preventNegativeBalance = true // default to not allowing negative
   } = params
 
   try {
-    const lowerUserId = userId.toLowerCase();
+    const lowerWalletEns = walletEns.toLowerCase();
+    const lowerWalletAddress = walletAddress.toLowerCase();
     
     // Attempt to find an existing user balance record
     const [existingBalance] = await db
       .select()
       .from(userBalancesTable)
-      .where(eq(userBalancesTable.userId, lowerUserId))
+      .where(eq(userBalancesTable.walletEns, lowerWalletEns))
 
     if (!existingBalance) {
       // No record yet: create a new balance row for this user
@@ -104,7 +107,8 @@ export async function updateBalanceAction(
       const result = await db
         .insert(userBalancesTable)
         .values({
-          userId: lowerUserId,
+          walletEns: lowerWalletEns,
+          walletAddress: lowerWalletAddress,
           balance: newBalance.toString()
         })
         .returning();
@@ -114,7 +118,7 @@ export async function updateBalanceAction(
       return {
         isSuccess: true,
         data: newRecord,
-        message: `Balance record created. User: ${lowerUserId}, Amount: ${amount}`
+        message: `Balance record created. WalletEns: ${lowerWalletEns}, Amount: ${amount}`
       }
     } else {
       // Record found: increment existing balance
@@ -130,14 +134,16 @@ export async function updateBalanceAction(
 
       const [updated] = await db
         .update(userBalancesTable)
-        .set({ balance: newBalance.toString() })
-        .where(eq(userBalancesTable.userId, lowerUserId))
+        .set({ 
+          balance: newBalance.toString(),
+        })
+        .where(eq(userBalancesTable.walletEns, lowerWalletEns))
         .returning()
 
       return {
         isSuccess: true,
         data: updated,
-        message: `Balance updated successfully. User: ${lowerUserId}, Added: ${amount}`
+        message: `Balance updated successfully. WalletEns: ${lowerWalletEns}, Added: ${amount}`
       }
     }
   } catch (error) {

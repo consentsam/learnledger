@@ -22,7 +22,7 @@ import { InferModel } from 'drizzle-orm'
 import { pgTable, text, uuid } from 'drizzle-orm/pg-core'
 
 export const skillsTable = pgTable('skills', {
-  id: uuid('id').defaultRandom().primaryKey(),
+  skillId: uuid('id').defaultRandom().primaryKey(),
 
   // The name of the skill (e.g. "React", "Solidity", "UI/UX")
   skillName: text('skill_name').notNull(),

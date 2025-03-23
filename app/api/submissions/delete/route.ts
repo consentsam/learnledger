@@ -1,95 +1,133 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
 
 import { db } from '@/db/db'
 import { projectSubmissionsTable } from '@/db/schema/project-submissions-schema'
 import { projectsTable } from '@/db/schema/projects-schema'
-import { 
-  successResponse, 
-  errorResponse, 
-  serverErrorResponse,
-  validateRequiredFields,
-  logApiRequest 
-} from '@/app/api/api-utils'
-import { withCors } from '@/lib/cors'
 
 /**
  * POST /api/submissions/delete
  * Body:
  * {
  *   "submissionId": string,
- *   "walletAddress": string
+ *   "walletAddress": string,
+ *   "walletEns": string
  * }
  *
  * Allows either the projectOwner or the freelancer to delete the submission.
  */
-async function deleteSubmission(req: NextRequest, parsedBody?: any) {
+export async function POST(req: NextRequest) {
   try {
-    // Log the request
-    logApiRequest('POST', '/api/submissions/delete', req.ip || 'unknown')
+    console.log('[POST /api/submissions/delete] Request received');
     
-    // Use the parsed body passed from middleware
-    const body = parsedBody || {};
+    // Parse the request body
+    let body;
+    try {
+      body = await req.json();
+      console.log('Request body:', JSON.stringify(body));
+    } catch (error) {
+      console.error('Error parsing request body:', error);
+      return NextResponse.json({
+        isSuccess: false,
+        message: 'Invalid JSON in request body'
+      }, { status: 400 });
+    }
     
-    // Validate required fields
-    const validation = validateRequiredFields(body, ['submissionId', 'walletAddress'])
-    if (!validation.isValid) {
-      return errorResponse(
-        `Missing required fields: ${validation.missingFields.join(', ')}`,
-        400
-      )
+    // Check required fields
+    const { submissionId, walletAddress, walletEns } = body || {};
+    
+    if (!submissionId || !walletAddress || !walletEns) {
+      const missingFields: string[] = [];
+      if (!submissionId) missingFields.push('submissionId');
+      if (!walletAddress) missingFields.push('walletAddress');
+      if (!walletEns) missingFields.push('walletEns');
+      
+      console.error('Missing required fields:', missingFields);
+      return NextResponse.json({
+        isSuccess: false,
+        message: `Missing required fields: ${missingFields.join(', ')}`
+      }, { status: 400 });
     }
     
     // Validate wallet format
-    if (!body.walletAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
-      return errorResponse('Invalid wallet address format', 400)
+    if (!walletAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
+      return NextResponse.json({
+        isSuccess: false,
+        message: 'Invalid wallet address format'
+      }, { status: 400 });
     }
 
     // 1) find the submission
     const [submission] = await db
       .select()
       .from(projectSubmissionsTable)
-      .where(eq(projectSubmissionsTable.id, body.submissionId))
+      .where(eq(projectSubmissionsTable.submissionId, submissionId))
       .limit(1)
       
     if (!submission) {
-      return errorResponse('Submission not found', 404)
+      return NextResponse.json({
+        isSuccess: false,
+        message: 'Submission not found'
+      }, { status: 404 });
     }
 
     // 2) find the project
     const [project] = await db
       .select()
       .from(projectsTable)
-      .where(eq(projectsTable.id, submission.projectId))
+      .where(eq(projectsTable.projectId, submission.projectId))
       .limit(1)
       
     if (!project) {
-      return errorResponse('Project not found', 404)
+      return NextResponse.json({
+        isSuccess: false,
+        message: 'Project not found'
+      }, { status: 404 });
     }
 
     // 3) check ownership or submitter
-    const isOwner = project.projectOwner.toLowerCase() === body.walletAddress.toLowerCase()
-    const isSubmitter = submission.freelancerAddress.toLowerCase() === body.walletAddress.toLowerCase()
+    const isOwner = project.projectOwnerWalletEns.toLowerCase() === walletEns.toLowerCase() ||
+                    project.projectOwnerWalletAddress.toLowerCase() === walletAddress.toLowerCase();
+                    
+    const isSubmitter = submission.freelancerWalletEns.toLowerCase() === walletEns.toLowerCase() ||
+                        submission.freelancerWalletAddress.toLowerCase() === walletAddress.toLowerCase();
 
     if (!isOwner && !isSubmitter) {
-      return errorResponse('Not authorized to delete this submission', 403)
+      return NextResponse.json({
+        isSuccess: false,
+        message: 'Not authorized to delete this submission'
+      }, { status: 403 });
     }
 
     // 4) Perform delete
     await db
       .delete(projectSubmissionsTable)
-      .where(eq(projectSubmissionsTable.id, body.submissionId))
+      .where(eq(projectSubmissionsTable.submissionId, submissionId))
 
-    return successResponse(null, 'Submission deleted successfully')
+    return NextResponse.json({
+      isSuccess: true,
+      message: 'Submission deleted successfully'
+    });
   } catch (error) {
     console.error('Submission delete error:', error);
-    return serverErrorResponse(error)
+    return NextResponse.json({
+      isSuccess: false,
+      message: 'Internal server error',
+      debugInfo: error instanceof Error ? {
+        message: error.message,
+        stack: error.stack
+      } : { error: String(error) }
+    }, { status: 500 });
   }
 }
 
-// Apply CORS to route handlers
-export const POST = withCors(deleteSubmission);
-export const OPTIONS = withCors(async () => {
-  // Empty handler, the CORS middleware will create the proper OPTIONS response
-  return new Response(null, { status: 204 });
-});
+export function OPTIONS() {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+    }
+  });
+}

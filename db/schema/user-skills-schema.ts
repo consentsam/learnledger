@@ -25,7 +25,8 @@ export const userSkillsTable = pgTable('user_skills', {
   id: uuid('id').defaultRandom().primaryKey(),
 
   // The wallet address or unique user ID
-  userId: text('user_id').notNull(),
+  walletEns: text('wallet_ens').notNull(),
+  walletAddress: text('wallet_address').notNull(),
 
   // The skill's UUID from skillsTable
   skillId: uuid('skill_id').notNull(),
