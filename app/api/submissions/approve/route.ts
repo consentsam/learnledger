@@ -19,11 +19,11 @@ import { projectsTable } from '@/db/schema/projects-schema'
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { submissionId, companyWallet } = body
+    const { submissionId, walletEns, walletAddress } = body
 
-    if (!submissionId || !companyWallet) {
+    if (!submissionId || !walletEns || !walletAddress) {
       return NextResponse.json(
-        { isSuccess: false, message: 'Missing submissionId or companyWallet' },
+        { isSuccess: false, message: 'Missing submissionId or walletEns or walletAddress' },
         { status: 400 }
       )
     }
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     const [submission] = await db
       .select()
       .from(projectSubmissionsTable)
-      .where(eq(projectSubmissionsTable.id, submissionId))
+      .where(eq(projectSubmissionsTable.submissionId, submissionId))
       .limit(1)
 
     if (!submission) {
@@ -45,8 +45,10 @@ export async function POST(req: NextRequest) {
     // 2) Approve
     const result = await approveSubmissionAction({
       projectId: submission.projectId,
-      freelancerAddress: submission.freelancerAddress, // keep internal name
-      companyWallet: companyWallet
+      freelancerWalletEns: submission.freelancerWalletEns,
+      freelancerWalletAddress: submission.freelancerWalletAddress,
+      companyWalletEns: walletEns,
+      companyWalletAddress: walletAddress
     })
 
     if (!result.isSuccess) {
@@ -60,7 +62,7 @@ export async function POST(req: NextRequest) {
     await db
       .update(projectSubmissionsTable)
       .set({ isMerged: true })
-      .where(eq(projectSubmissionsTable.id, submissionId))
+      .where(eq(projectSubmissionsTable.submissionId, submissionId))
 
     return NextResponse.json(
       { isSuccess: true, message: 'Submission approved successfully' },

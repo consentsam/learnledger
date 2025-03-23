@@ -37,6 +37,23 @@ import {
 
 import { withCors } from '@/lib/cors'
 
+// Helper function to print the schema structure for debugging
+function logSchemaStructure() {
+  console.log('Projects table schema structure:');
+  for (const key in projectsTable) {
+    if (typeof projectsTable[key] === 'object' && projectsTable[key] !== null) {
+      console.log(`- ${key}`);
+    }
+  }
+}
+
+// We call this once on startup to aid debugging
+try {
+  logSchemaStructure();
+} catch (error) {
+  console.error('Error logging schema structure:', error);
+}
+
 // -------------------------------------------------------------------------------------
 // NEXT.JS 13 route handlers: GET, POST, OPTIONS
 // We wrap them with CORS as in your existing code base
@@ -181,7 +198,7 @@ async function postProjectsHandler(req: NextRequest) {
       logApiRequest('POST', '/api/projects => createProject', req.ip || 'unknown')
 
       // Validate required fields for creation
-      const validation = validateRequiredFields(body, ['walletAddress', 'walletEns', 'projectName', 'projectOwner'])
+      const validation = validateRequiredFields(body, ['walletAddress', 'walletEns', 'projectName'])
       if (!validation.isValid) {
         return errorResponse(
           `Missing required fields: ${validation.missingFields.join(', ')}`,
@@ -195,18 +212,17 @@ async function postProjectsHandler(req: NextRequest) {
 
       // We call the existing createProjectAction
       const result = await createProjectAction({
-        walletEns: body.walletEns || body.projectOwner, // prioritize walletEns, fallback to walletAddress or projectOwner
+        walletEns: body.walletEns,
         walletAddress: body.walletAddress,
         projectName: body.projectName,
         projectDescription: body.projectDescription,
+        prizeAmount: body.prizeAmount,        
         projectRepo: body.projectRepo || body.projectLink,
-        prizeAmount: body.prizeAmount,
         requiredSkills: Array.isArray(body.requiredSkills)
           ? body.requiredSkills.join(', ')
           : (body.requiredSkills || ''),
         completionSkills: body.completionSkills,
         deadline: body.deadline, // Pass through as is - validation happens in createProjectAction
-        projectOwner: body.projectOwner,
       })
 
       if (!result.isSuccess) {
@@ -231,23 +247,35 @@ async function postProjectsHandler(req: NextRequest) {
     const page = parseInt(body.page || '1', 10)
     const limit = parseInt(body.limit || '10', 10)
     const offset = (page - 1) * limit
+    
+    console.log('Filtering projects with params:', { tab, status, skills, sortBy, sortOrder, page, limit })
 
     // Build query with proper type casting
     let query = db.select().from(projectsTable) as any
 
     // if status provided
     if (status) {
+      console.log(`Applying status filter: "${status}" (original type: ${typeof status})`)
+      
+      // Use direct equality with the column name to avoid any issues
       query = query.where(eq(projectsTable.projectStatus, status))
+      
+      // Log the generated SQL for debugging
+      console.log('Generated SQL condition:', 'project_status = ' + status)
     }
 
     // if skills provided => require each skill to appear in requiredSkills
     if (skills) {
-      const skillsList = skills.split(',').map((s: string) => s.trim().toLowerCase())
+      console.log(`Applying skills filter: "${skills}"`);
       
+      const skillsList = skills.split(',').map((s: string) => s.trim().toLowerCase());
+      console.log('Skills list for filtering:', skillsList);
+      
+      // Use SQL LIKE for each skill
       for (const skill of skillsList) {
         query = query.where(
           sql`${projectsTable.requiredSkills} ILIKE ${'%' + skill + '%'}`
-        )
+        );
       }
     }
 
@@ -272,11 +300,41 @@ async function postProjectsHandler(req: NextRequest) {
 
     // Execute query
     const rows = await query
+    
+    // Log the raw results to debug
+    console.log(`Query returned ${rows.length} projects before final filtering`);
+    if (rows.length > 0) {
+      console.log('First project status:', rows[0].projectStatus);
+    }
+    
+    // Apply an additional manual filter for status if provided
+    // This ensures we only return projects that truly match the status
+    let filteredRows = rows;
+    if (status) {
+      filteredRows = rows.filter(project => 
+        project.projectStatus && project.projectStatus.toLowerCase() === status.toLowerCase()
+      );
+      console.log(`After manual status filtering: ${filteredRows.length} projects remain`);
+    }
+    
+    // Apply manual skills filtering if needed
+    if (skills && filteredRows.length > 0) {
+      const skillsList = skills.split(',').map(s => s.trim().toLowerCase());
+      
+      filteredRows = filteredRows.filter(project => {
+        if (!project.requiredSkills) return false;
+        
+        const projectSkills = project.requiredSkills.toLowerCase();
+        return skillsList.every(skill => projectSkills.includes(skill));
+      });
+      
+      console.log(`After manual skills filtering: ${filteredRows.length} projects remain`);
+    }
 
     // Return formatted response
     return NextResponse.json({
       isSuccess: true,
-      data: rows.map((p) => ({
+      data: filteredRows.map((p) => ({
         ...p,
         // Convert deadline to ISO string if present
         deadline: p.deadline ? p.deadline.toISOString() : null
@@ -310,6 +368,7 @@ async function postProjectsHandler(req: NextRequest) {
 async function putProjectHandler(req: NextRequest) {
   try {
     const body = await req.json()
+    console.log('[PUT /api/projects] Request body:', JSON.stringify(body, null, 2))
 
     // Validate required fields
     const validation = validateRequiredFields(body, ['projectId', 'projectName', 'walletAddress'])
@@ -321,26 +380,35 @@ async function putProjectHandler(req: NextRequest) {
     }
 
     // Find the project first to verify ownership
+    console.log(`[PUT /api/projects] Looking for project with ID: ${body.projectId}`)
     const [project] = await db
       .select()
       .from(projectsTable)
-      .where(eq(projectsTable.id, body.projectId))
+      .where(eq(projectsTable.projectId, body.projectId))
       .limit(1)
 
     if (!project) {
       return errorResponse('Project not found', 404)
     }
 
+    console.log('[PUT /api/projects] Found project:', JSON.stringify(project, null, 2))
+
     // Verify ownership - check both wallet address and ENS
     const isOwner = 
-      project.projectOwner.toLowerCase() === body.walletAddress.toLowerCase() ||
-      (body.walletEns && project.projectOwner.toLowerCase() === body.walletEns.toLowerCase())
+      (project.projectOwnerWalletAddress && 
+       project.projectOwnerWalletAddress.toLowerCase() === body.walletAddress.toLowerCase()) ||
+      (body.walletEns && project.projectOwnerWalletEns && 
+       project.projectOwnerWalletEns.toLowerCase() === body.walletEns.toLowerCase())
+
+    console.log(`[PUT /api/projects] Ownership check: ${isOwner}`)
+    console.log(`Project owner: ${project.projectOwnerWalletEns} / ${project.projectOwnerWalletAddress}`)
+    console.log(`Request from: ${body.walletEns} / ${body.walletAddress}`)
 
     if (!isOwner) {
       return errorResponse('Only the project owner can update this project', 403)
     }
 
-    // Prepare update data
+    // Prepare update data with only fields that exist in the schema
     const updateData = {
       projectName: body.projectName,
       projectDescription: body.projectDescription || '',
@@ -348,17 +416,34 @@ async function putProjectHandler(req: NextRequest) {
       requiredSkills: body.requiredSkills || '',
       completionSkills: body.completionSkills || '',
       projectRepo: body.projectRepo || '',
-      updatedAt: new Date()
+      updatedAt: new Date(),
+      projectOwnerWalletAddress: body.walletAddress,
+      projectOwnerWalletEns: body.walletEns
     }
 
-    // Update the project
-    const [updated] = await db
-      .update(projectsTable)
-      .set(updateData)
-      .where(eq(projectsTable.id, body.projectId))
-      .returning()
+    console.log('[PUT /api/projects] Update data:', JSON.stringify(updateData, null, 2))
 
-    return successResponse(updated, 'Project updated successfully')
+    try {
+      // Update the project
+      const [updated] = await db
+        .update(projectsTable)
+        .set(updateData)
+        .where(eq(projectsTable.projectId, body.projectId))
+        .returning()
+
+      console.log('[PUT /api/projects] Update successful:', updated ? 'Yes' : 'No')
+      return successResponse(updated, 'Project updated successfully')
+    } catch (dbError: any) {
+      console.error('[PUT /api/projects] Database error during update:', dbError)
+      // Add more specific error information to help debug
+      if (dbError.message && dbError.message.includes('syntax error')) {
+        return errorResponse(
+          'Database syntax error. This might be due to a mismatch between code and schema.',
+          500
+        )
+      }
+      return serverErrorResponse(dbError)
+    }
   } catch (error) {
     console.error('[PUT /api/projects] error:', error)
     return serverErrorResponse(error)
@@ -380,6 +465,7 @@ async function deleteProjectHandler(req: NextRequest) {
   try {
     const body = await req.json()
     const { projectId, walletAddress, walletEns } = body
+    console.log('[DELETE /api/projects] Request body:', { projectId, walletAddress, walletEns })
 
     // Validate projectId
     if (!projectId) {
@@ -395,7 +481,7 @@ async function deleteProjectHandler(req: NextRequest) {
     const [project] = await db
       .select()
       .from(projectsTable)
-      .where(eq(projectsTable.id, projectId))
+      .where(eq(projectsTable.projectId, projectId))
       .limit(1)
 
     if (!project) {
@@ -403,20 +489,29 @@ async function deleteProjectHandler(req: NextRequest) {
     }
 
     // Cannot delete if project is assigned
-    if (project.assignedFreelancer) {
+    if (project.assignedFreelancerWalletAddress || project.assignedFreelancerWalletEns) {
       return errorResponse('Cannot delete a project that has been assigned', 400)
     }
 
     // Check ownership using multiple methods
     let isAuthorized = false;
+    console.log('Project owner details:', {
+      ens: project.projectOwnerWalletEns,
+      address: project.projectOwnerWalletAddress
+    })
+    console.log('Requester details:', { ens: walletEns, address: walletAddress })
 
-    // Method 1: Direct match with walletEns (primary method)
-    if (walletEns && project.projectOwner.toLowerCase() === walletEns.toLowerCase()) {
+    // Method 1: Direct match with walletEns
+    if (walletEns && project.projectOwnerWalletEns && 
+        project.projectOwnerWalletEns.toLowerCase() === walletEns.toLowerCase()) {
       isAuthorized = true;
+      console.log('Authorized via ENS match')
     }
     // Method 2: Direct match with walletAddress
-    else if (walletAddress && project.projectOwner.toLowerCase() === walletAddress.toLowerCase()) {
+    else if (walletAddress && project.projectOwnerWalletAddress && 
+             project.projectOwnerWalletAddress.toLowerCase() === walletAddress.toLowerCase()) {
       isAuthorized = true;
+      console.log('Authorized via wallet address match')
     }
     // Method 3: ENS lookup if project owner is a wallet address
     else if (walletEns) {
@@ -426,8 +521,10 @@ async function deleteProjectHandler(req: NextRequest) {
         .where(eq(companyTable.walletEns, walletEns.toLowerCase()))
         .limit(1)
 
-      if (company && company.walletAddress.toLowerCase() === project.projectOwner.toLowerCase()) {
+      if (company && company.walletAddress && project.projectOwnerWalletAddress && 
+          company.walletAddress.toLowerCase() === project.projectOwnerWalletAddress.toLowerCase()) {
         isAuthorized = true;
+        console.log('Authorized via company ENS lookup')
       }
     }
     // Method 4: Reverse lookup if project owner is an ENS
@@ -438,8 +535,10 @@ async function deleteProjectHandler(req: NextRequest) {
         .where(eq(companyTable.walletAddress, walletAddress.toLowerCase()))
         .limit(1)
 
-      if (company && company.walletEns.toLowerCase() === project.projectOwner.toLowerCase()) {
+      if (company && company.walletEns && project.projectOwnerWalletEns && 
+          company.walletEns.toLowerCase() === project.projectOwnerWalletEns.toLowerCase()) {
         isAuthorized = true;
+        console.log('Authorized via company wallet address lookup')
       }
     }
 
@@ -447,12 +546,30 @@ async function deleteProjectHandler(req: NextRequest) {
       return errorResponse('Only the project owner can delete this project', 403)
     }
 
-    // Perform the delete
-    await db
-      .delete(projectsTable)
-      .where(eq(projectsTable.id, projectId))
+    try {
+      console.log(`[DELETE /api/projects] Attempting to delete project: ${projectId}`)
+      
+      // Perform the delete
+      await db
+        .delete(projectsTable)
+        .where(eq(projectsTable.projectId, projectId))
 
-    return successResponse(null, 'Project deleted successfully')
+      console.log(`[DELETE /api/projects] Successfully deleted project: ${projectId}`)
+      return successResponse({
+        projectId: projectId,
+        walletAddress: walletAddress,
+        walletEns: walletEns
+      }, 'Project deleted successfully')
+    } catch (dbError: any) {
+      console.error('[DELETE /api/projects] Database error during delete:', dbError)
+      if (dbError.message && dbError.message.includes('syntax error')) {
+        return errorResponse(
+          'Database syntax error. This might be due to a mismatch between code and schema.',
+          500
+        )
+      }
+      return serverErrorResponse(dbError)
+    }
   } catch (error) {
     console.error('[DELETE /api/projects] error:', error)
     return serverErrorResponse(error)

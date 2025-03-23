@@ -148,9 +148,10 @@ export async function getOrCreateSkillAction(skillName: string, skillDescription
   }
 }
 
-export async function addSkillToUserAction(params: { userId: string; skillId: string }): Promise<ActionResult> {
+export async function addSkillToUserAction(params: { walletEns: string; walletAddress: string; skillId: string }): Promise<ActionResult> {
   try {
-    const lowerUserId = params.userId.toLowerCase()
+    const lowerWalletEns = params.walletEns.toLowerCase()
+    const lowerWalletAddress = params.walletAddress.toLowerCase()
     
     // first check if user already has this skill
     const userSkillResults = await db
@@ -158,7 +159,8 @@ export async function addSkillToUserAction(params: { userId: string; skillId: st
       .from(userSkillsTable)
       .where(
         and(
-          eq(userSkillsTable.userId, lowerUserId),
+          eq(userSkillsTable.walletEns, lowerWalletEns),
+          eq(userSkillsTable.walletAddress, lowerWalletAddress),
           eq(userSkillsTable.skillId, params.skillId)
         )
       )
@@ -177,7 +179,7 @@ export async function addSkillToUserAction(params: { userId: string; skillId: st
     // otherwise insert
     const result = await db
       .insert(userSkillsTable)
-      .values({ userId: lowerUserId, skillId: params.skillId })
+      .values({ walletEns: lowerWalletEns, walletAddress: lowerWalletAddress, skillId: params.skillId })
       .returning()
       
     const inserted = Array.isArray(result) && result.length > 0 ? result[0] : result
@@ -221,7 +223,7 @@ export async function fetchUserSkillsAction(walletEns: string): Promise<ActionRe
         skillDescription: skillsTable.skillDescription,
       })
       .from(userSkillsTable)
-      .leftJoin(skillsTable, eq(userSkillsTable.skillId, skillsTable.id))
+      .leftJoin(skillsTable, eq(userSkillsTable.skillId, skillsTable.skillId))
       .where(eq(userSkillsTable.userId, lowerUserId))
 
     // If bridging is not empty, return that

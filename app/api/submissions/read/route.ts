@@ -192,6 +192,7 @@ async function getSubmissionsPost(req: NextRequest) {
         .limit(1);
       companyRow = foundByEns || null;
 
+      console.log('companyRow inside getSubmissionsPost =>', companyRow)
       if (!companyRow) {
         // fallback: check walletAddress
         const lowerAddr = walletAddress.toLowerCase();
@@ -209,8 +210,8 @@ async function getSubmissionsPost(req: NextRequest) {
       }
 
       // 2) find all projects owned by that company
-      const finalCompanyWallet = companyRow.walletAddress.toLowerCase();
-
+      const finalCompanyWalletEns = companyRow.walletEns.toLowerCase();
+      console.log('finalCompanyWalletEns inside getSubmissionsPost =>', finalCompanyWalletEns)
       // If projectId is provided, we'll confirm that project is owned by this company
       if (projectId) {
         // 2a) find that specific project and check ownership
@@ -223,7 +224,7 @@ async function getSubmissionsPost(req: NextRequest) {
         if (!proj) {
           return errorResponse(`Project not found: ${projectId}`, 404);
         }
-        if (proj.projectOwner.toLowerCase() !== finalCompanyWallet) {
+        if (proj.projectOwnerWalletEns.toLowerCase() !== finalCompanyWalletEns) {
           return errorResponse(
             `Project ${projectId} is not owned by this company (walletEns=${walletEns})`,
             403
@@ -245,7 +246,7 @@ async function getSubmissionsPost(req: NextRequest) {
             projectId: projectsTable.projectId
           })
           .from(projectsTable)
-          .where(eq(projectsTable.projectOwner, finalCompanyWallet));
+          .where(eq(projectsTable.projectOwnerWalletEns, finalCompanyWalletEns));
 
         if (ownedProjects.length === 0) {
           // no projects => no submissions
@@ -253,14 +254,32 @@ async function getSubmissionsPost(req: NextRequest) {
         }
 
         const projectIds = ownedProjects.map(p => p.projectId);
-        // inArray => condition for projectSubmissionsTable.projectId in (listOfIds)
-        const subs = await db
-          .select()
-          .from(projectSubmissionsTable)
-          .where(sql`${projectSubmissionsTable.projectId} IN (${projectIds.map(() => '?').join(',')})`.params(...projectIds))
-          .orderBy(desc(projectSubmissionsTable.createdAt));
+        
+        if (projectIds.length === 0) {
+          // no projects => no submissions
+          return successResponse([]);
+        }
 
-        return successResponse(subs);
+        // Query approach that works with basic Drizzle functionality
+        let allSubmissions: any[] = [];
+        
+        // Process each project individually and combine results
+        for (const pid of projectIds) {
+          const projectSubs = await db
+            .select()
+            .from(projectSubmissionsTable)
+            .where(eq(projectSubmissionsTable.projectId, pid))
+            .orderBy(desc(projectSubmissionsTable.createdAt));
+            
+          allSubmissions = [...allSubmissions, ...projectSubs];
+        }
+        
+        // Sort all submissions by creation date
+        allSubmissions.sort((a, b) => {
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        });
+        
+        return successResponse(allSubmissions);
       }
     }
   } catch (error) {

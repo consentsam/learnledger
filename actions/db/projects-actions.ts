@@ -40,7 +40,6 @@ interface ActionResult<T = any> {
  * For the "Create Project" workflow
  */
 interface CreateProjectParams {
-  projectOwner: string
   walletEns: string
   walletAddress: string
   projectName: string
@@ -69,10 +68,10 @@ export async function createProjectAction(
   params: CreateProjectParams
 ): Promise<ActionResult> {
   try {
-    if (!params.walletEns || !params.projectName || !params.projectOwner || !params.walletAddress) {
+    if (!params.walletEns || !params.projectName || !params.walletAddress) {
       return {
         isSuccess: false,
-        message: 'Missing required fields: walletEns, projectName, projectOwner, or walletAddress',
+        message: 'Missing required fields: walletEns, projectName, or walletAddress',
       }
     }
 
@@ -103,7 +102,7 @@ export async function createProjectAction(
         projectDescription: params.projectDescription ?? '',
         prizeAmount: proposedPrize.toString(),
         projectStatus: 'open',
-        projectOwnerWalletEns: params.projectOwner,
+        projectOwnerWalletEns: params.walletEns,
         projectOwnerWalletAddress: lowerCaseAddress,
         requiredSkills: params.requiredSkills || '',
         completionSkills: params.completionSkills || '',
@@ -142,15 +141,16 @@ export async function createProjectAction(
  */
 export async function autoAwardOnPrMergeAction(params: {
   projectId: string
-  freelancerAddress: string
+  freelancerWalletEns: string
+  freelancerWalletAddress: string
 }): Promise<ActionResult> {
   try {
-    const freelancerAddress = params.freelancerAddress.toLowerCase();
+    const freelancerAddress = params.freelancerWalletAddress.toLowerCase();
     
     const [project] = await db
       .select()
       .from(projectsTable)
-      .where(eq(projectsTable.id, params.projectId))
+      .where(eq(projectsTable.projectId, params.projectId))
 
     if (!project) {
       return { isSuccess: false, message: "Project not found" }
@@ -166,7 +166,8 @@ export async function autoAwardOnPrMergeAction(params: {
     const prize = project.prizeAmount ? Number(project.prizeAmount) : 0
     if (prize > 0) {
       const awardResult = await updateBalanceAction({
-        userId: freelancerAddress,
+        walletEns: params.freelancerWalletEns,
+        walletAddress: params.freelancerWalletAddress,
         amount: prize,
         preventNegativeBalance: false
       })
@@ -190,7 +191,8 @@ export async function autoAwardOnPrMergeAction(params: {
         }
         const skillId = getOrCreate.data.id
         const addSkill = await addSkillToUserAction({
-          userId: freelancerAddress,
+          walletEns: params.freelancerWalletEns,
+          walletAddress: params.freelancerWalletAddress,
           skillId
         })
         if (!addSkill.isSuccess) {
@@ -204,9 +206,10 @@ export async function autoAwardOnPrMergeAction(params: {
       .update(projectsTable)
       .set({
         projectStatus: "closed",
-        assignedFreelancer: freelancerAddress
+        assignedFreelancerWalletEns: params.freelancerWalletEns,
+        assignedFreelancerWalletAddress: params.freelancerWalletAddress,
       })
-      .where(eq(projectsTable.id, params.projectId))
+      .where(eq(projectsTable.projectId, params.projectId))
 
     return {
       isSuccess: true,
@@ -221,32 +224,36 @@ export async function autoAwardOnPrMergeAction(params: {
 
 export async function approveSubmissionAction(params: {
   projectId: string
-  freelancerAddress: string
-  companyWallet: string
+  freelancerWalletEns: string
+  freelancerWalletAddress: string
+  companyWalletEns: string
+  companyWalletAddress: string
 }): Promise<ActionResult> {
   try {
     // 1) Load project
-    const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, params.projectId))
+    const [project] = await db.select().from(projectsTable).where(eq(projectsTable.projectId, params.projectId))
     if (!project) {
       return { isSuccess: false, message: 'Project not found' }
     }
 
     // 2) Must match projectOwner
-    if (project.projectOwner.toLowerCase() !== params.companyWallet.toLowerCase()) {
+    if (project.projectOwnerWalletEns.toLowerCase() !== params.companyWalletEns.toLowerCase()) {
       return { isSuccess: false, message: 'Not authorized' }
     }
 
     // 3) Mark project as closed & assign the freelancer
     await db.update(projectsTable).set({
       projectStatus: 'closed',
-      assignedFreelancer: params.freelancerAddress.toLowerCase(),
-    }).where(eq(projectsTable.id, params.projectId))
+      assignedFreelancerWalletEns: params.freelancerWalletEns,
+      assignedFreelancerWalletAddress: params.freelancerWalletAddress,
+    }).where(eq(projectsTable.projectId, params.projectId))
 
     // 4) Award tokens
     const prize = parseFloat(project.prizeAmount?.toString() ?? '0')
     if (prize > 0) {
       const award = await updateBalanceAction({ 
-        userId: params.freelancerAddress, 
+        walletEns: params.freelancerWalletEns, 
+        walletAddress: params.freelancerWalletAddress,
         amount: prize 
       })
       if (!award.isSuccess) {
@@ -265,7 +272,11 @@ export async function approveSubmissionAction(params: {
           continue
         }
         const skillId = getOrCreate.data.id
-        await addSkillToUserAction({ userId: params.freelancerAddress, skillId })
+        await addSkillToUserAction({ 
+          walletEns: params.freelancerWalletEns, 
+          walletAddress: params.freelancerWalletAddress,
+          skillId 
+        })
       }
     }
 
