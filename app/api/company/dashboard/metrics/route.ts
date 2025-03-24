@@ -155,7 +155,7 @@ async function handleCompanyDashboardMetrics(req: NextRequest) {
       return NextResponse.json({
         isSuccess: true,
         totalSubmissions: 0,
-        approvedSubmissions: 0,
+        awardedSubmissions: 0,
         rejectedSubmissions: 0,
         totalProjects,
         activeProjects,
