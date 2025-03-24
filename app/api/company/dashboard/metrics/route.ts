@@ -226,7 +226,7 @@ async function handleCompanyDashboardMetrics(req: NextRequest) {
 
     console.log(`[Company Metrics ${requestId}] Calculated metrics:`, {
       totalSubmissions,
-      approvedSubmissions,
+      awardedSubmissions,
       rejectedSubmissions,
       pullRequestsCount,
       growthPercent
@@ -236,7 +236,7 @@ async function handleCompanyDashboardMetrics(req: NextRequest) {
     return NextResponse.json({
       isSuccess: true,
       totalSubmissions,
-      approvedSubmissions,
+      awardedSubmissions,
       rejectedSubmissions,
       totalProjects,
       activeProjects,
