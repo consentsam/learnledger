@@ -61,7 +61,10 @@ export async function POST(req: NextRequest) {
     // 3) Mark submission as merged
     await db
       .update(projectSubmissionsTable)
-      .set({ isMerged: true })
+      .set({ 
+        isMerged: true,
+        status: 'awarded'
+       })
       .where(eq(projectSubmissionsTable.submissionId, submissionId))
 
     return NextResponse.json(

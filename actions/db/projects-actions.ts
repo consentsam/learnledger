@@ -53,15 +53,16 @@ interface CreateProjectParams {
 
 /**
  * Validates if a string is in correct ISO 8601 format
- * Valid formats: YYYY-MM-DDTHH:mm:ssZ or YYYY-MM-DDTHH:mm:ss+HH:mm
+ * Accepts various ISO 8601 formats including ones with milliseconds
  */
 function isValidISODate(dateString: string): boolean {
-  const isoDateRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:?\d{2})?$/
-  if (!isoDateRegex.test(dateString)) {
-    return false
+  // The existing regex is too restrictive, we need a more flexible approach
+  try {
+    const date = new Date(dateString);
+    return date.toString() !== 'Invalid Date';
+  } catch (error) {
+    return false;
   }
-  const date = new Date(dateString)
-  return date.toString() !== 'Invalid Date'
 }
 
 export async function createProjectAction(
@@ -271,12 +272,22 @@ export async function approveSubmissionAction(params: {
           console.error(`Could not create/fetch skill '${skillName}':`, getOrCreate.message)
           continue
         }
-        const skillId = getOrCreate.data.id
-        await addSkillToUserAction({ 
+        
+        const skillData = getOrCreate.data
+        if (!skillData.id) {
+          console.error(`Skill '${skillName}' was found but has no ID`, skillData)
+          continue
+        }
+        
+        const addSkill = await addSkillToUserAction({ 
           walletEns: params.freelancerWalletEns, 
           walletAddress: params.freelancerWalletAddress,
-          skillId 
+          skillId: skillData.id 
         })
+        
+        if (!addSkill.isSuccess) {
+          console.error(`Failed to add skill '${skillName}' to user:`, addSkill.message)
+        }
       }
     }
 

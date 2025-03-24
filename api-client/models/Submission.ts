@@ -16,7 +16,7 @@ export type Submission = {
 export namespace Submission {
     export enum status {
         PENDING = 'pending',
-        APPROVED = 'approved',
+        AWARDED = 'awarded',
         REJECTED = 'rejected',
     }
 }

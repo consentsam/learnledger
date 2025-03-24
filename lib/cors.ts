@@ -3,9 +3,11 @@ import { NextRequest, NextResponse } from 'next/server';
 // CORS headers for allowed origins
 const allowedOrigins = [
   'http://localhost:3000',
-  'https://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:3002',
+  'http://localhost:3003',
   // Add your production domains if needed
-  '*', // Allow all origins temporarily for development
+  // '*', // Allow all origins temporarily for development - REMOVED as it's not needed anymore
   // TODO: Replace the line above with your specific frontend production domains
   // 'https://your-frontend-domain.com',
 ];

@@ -194,7 +194,7 @@ async function handleCompanyDashboardMetrics(req: NextRequest) {
     console.log(`[Company Metrics ${requestId}] Found ${allSubmissions.length} total submissions`);
 
     const totalSubmissions = allSubmissions.length
-    const approvedSubmissions = allSubmissions.filter(s => s.status === 'approved').length
+    const awardedSubmissions = allSubmissions.filter(s => s.status === 'awarded').length
     const rejectedSubmissions = allSubmissions.filter(s => s.status === 'rejected').length
 
     // 5) timeframe logic: parse "24h" -> hours

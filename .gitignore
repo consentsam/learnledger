@@ -15,3 +15,9 @@ coverage/
 .vercel
 .env.example
 .env.production
+LL-fe/node_modules/
+LL-fe/.next/
+LL-fe/out/
+LL-fe/build/
+LL-fe/dist/
+LL-fe/.env

@@ -106,15 +106,34 @@ export async function getSkillByNameAction(skillName: string): Promise<ActionRes
 
 export async function getOrCreateSkillAction(skillName: string, skillDescription?: string): Promise<ActionResult> {
   try {
+    if (!skillName || skillName.trim() === '') {
+      return {
+        isSuccess: false,
+        message: "Skill name cannot be empty",
+      }
+    }
+    
+    const trimmedSkillName = skillName.trim()
+    
+    // Use parameterized query instead of direct ILIKE
     const result = await db
       .select()
       .from(skillsTable)
-      .where(sql`${skillsTable.skillName} ILIKE ${skillName}`)
+      .where(sql`${skillsTable.skillName} ILIKE ${trimmedSkillName}`)
       .limit(1);
     
     const existingSkill = result.length > 0 ? result[0] : null;
 
     if (existingSkill) {
+      // Verify the skill has a valid ID
+      if (!existingSkill.id) {
+        console.error("Found skill but it has no ID:", existingSkill)
+        return {
+          isSuccess: false,
+          message: "Skill found but has invalid data",
+        }
+      }
+      
       return {
         isSuccess: true,
         message: "Skill found",
@@ -125,7 +144,7 @@ export async function getOrCreateSkillAction(skillName: string, skillDescription
     const insertResult = await db
       .insert(skillsTable)
       .values({
-        skillName: skillName,
+        skillName: trimmedSkillName,
         skillDescription: skillDescription ?? ""
       })
       .returning();
@@ -133,6 +152,15 @@ export async function getOrCreateSkillAction(skillName: string, skillDescription
     const newSkill = Array.isArray(insertResult) && insertResult.length > 0 
       ? insertResult[0] 
       : insertResult;
+      
+    // Verify the new skill has a valid ID
+    if (!newSkill?.id) {
+      console.error("Created skill but it has no ID:", newSkill)
+      return {
+        isSuccess: false,
+        message: "Failed to create skill properly",
+      }
+    }
 
     return {
       isSuccess: true,
@@ -150,6 +178,20 @@ export async function getOrCreateSkillAction(skillName: string, skillDescription
 
 export async function addSkillToUserAction(params: { walletEns: string; walletAddress: string; skillId: string }): Promise<ActionResult> {
   try {
+    if (!params.walletEns || !params.walletAddress) {
+      return {
+        isSuccess: false,
+        message: "Wallet ENS and address are required"
+      }
+    }
+    
+    if (!params.skillId) {
+      return {
+        isSuccess: false,
+        message: "Skill ID is required"
+      }
+    }
+    
     const lowerWalletEns = params.walletEns.toLowerCase()
     const lowerWalletAddress = params.walletAddress.toLowerCase()
     
@@ -179,7 +221,11 @@ export async function addSkillToUserAction(params: { walletEns: string; walletAd
     // otherwise insert
     const result = await db
       .insert(userSkillsTable)
-      .values({ walletEns: lowerWalletEns, walletAddress: lowerWalletAddress, skillId: params.skillId })
+      .values({ 
+        walletEns: lowerWalletEns, 
+        walletAddress: lowerWalletAddress, 
+        skillId: params.skillId 
+      })
       .returning()
       
     const inserted = Array.isArray(result) && result.length > 0 ? result[0] : result

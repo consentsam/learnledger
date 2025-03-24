@@ -195,7 +195,7 @@ async function handleFreelancerMetrics(req: NextRequest) {
     console.log(`[Freelancer Metrics ${requestId}] Found ${allSubs.length} total submissions`)
 
     const totalSubmissions = allSubs.length
-    const approvedSubmissions = allSubs.filter(s => s.status === 'approved').length
+    const awardedSubmissions = allSubs.filter(s => s.status === 'awarded').length
     const rejectedSubmissions = allSubs.filter(s => s.status === 'rejected').length
 
     // 5) Distinct project IDs from those submissions

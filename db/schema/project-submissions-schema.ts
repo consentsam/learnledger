@@ -32,7 +32,7 @@ export const projectSubmissionsTable = pgTable("project_submissions", {
   repoName: text("repo_name"),
   prNumber: text("pr_number"),
   isMerged: boolean("is_merged").default(false),
-  status: text("status").default("pending"),  // e.g. 'pending', 'approved', 'rejected'
+  status: text("status").default("pending"),  // e.g. 'pending', 'awarded', 'rejected'
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .default(sql`now()`)
     .notNull(),
