@@ -12,6 +12,7 @@ import {
 } from '@/app/api/api-utils';
 
 import { registerUserProfileAction } from '@/actions/db/user-profile-actions';
+import { registerUserAsCompany, registerUserAsFreelancer } from '@/app/api/blockchain-utils';
 
 // Define the validation schema for the registration endpoint
 // We add "walletEns" as mandatory if role=freelancer, optional for company (you can adjust if you want it mandatory for company too).
@@ -110,10 +111,50 @@ async function registerHandler(req: NextRequest, parsedBody?: any) {
     // At this point, "result.data" is either the inserted or updated row from DB
     const row = result.data;
 
+    // After successful registration in DB, register on the blockchain
+    let blockchainResult;
+    if (body.role === 'company') {
+      blockchainResult = await registerUserAsCompany(body.walletAddress);
+    } else if (body.role === 'freelancer') {
+      blockchainResult = await registerUserAsFreelancer(body.walletAddress);
+    }
+
+    // If blockchain transaction failed, retry up to 3 times
+    if (!blockchainResult?.success) {
+      console.log(`Blockchain registration attempt 1 failed for ${body.walletAddress} as ${body.role}. Retrying...`);
+      
+      // Try up to 2 more times (total of 3 attempts)
+      for (let attempt = 2; attempt <= 3; attempt++) {
+        if (body.role === 'company') {
+          blockchainResult = await registerUserAsCompany(body.walletAddress);
+        } else if (body.role === 'freelancer') {
+          blockchainResult = await registerUserAsFreelancer(body.walletAddress);
+        }
+        
+        // If successful, break out of the retry loop
+        if (blockchainResult?.success) {
+          console.log(`Blockchain registration succeeded on attempt ${attempt} for ${body.walletAddress} as ${body.role}`);
+          break;
+        }
+        
+        console.log(`Blockchain registration attempt ${attempt} failed for ${body.walletAddress} as ${body.role}. ${attempt < 3 ? "Retrying..." : "Giving up."}`);
+      }
+      
+      // If all attempts failed, log the error but continue
+      if (!blockchainResult?.success) {
+        console.error(`All blockchain registration attempts failed for ${body.walletAddress} as ${body.role}:`, blockchainResult?.error);
+      }
+    }
+
     // We want a consistent output shape. So let's build it:
     // If role=freelancer => these fields
     // If role=company => those fields, etc.
     let responseData: Record<string, any> = { ...row };
+
+    // Add blockchain transaction info if available
+    if (blockchainResult?.success) {
+      responseData.blockchainTxHash = blockchainResult.txHash;
+    }
 
     // If you want to rename some DB columns to the final JSON keys, do it here:
     // e.g. responseData.githubProfileUsername = row.githubProfileUsername;

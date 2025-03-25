@@ -358,12 +358,13 @@ async function postProjectsHandler(req: NextRequest) {
  * - projectId: string (required)
  * - projectName: string (required)
  * - projectDescription?: string
- * - prizeAmount?: string | number
  * - requiredSkills?: string
  * - completionSkills?: string
  * - projectRepo?: string
  * - walletAddress: string (required for authorization)
  * - walletEns?: string (optional, for ENS support)
+ * 
+ * Note: prizeAmount cannot be changed after project creation
  */
 async function putProjectHandler(req: NextRequest) {
   try {
@@ -377,6 +378,11 @@ async function putProjectHandler(req: NextRequest) {
         `Missing required fields: ${validation.missingFields.join(', ')}`,
         400
       )
+    }
+
+    // Check if user is trying to change prizeAmount, which is not allowed
+    if (body.prizeAmount !== undefined) {
+      return errorResponse('Changing prize amount is not allowed after project creation', 400)
     }
 
     // Find the project first to verify ownership
@@ -412,7 +418,6 @@ async function putProjectHandler(req: NextRequest) {
     const updateData = {
       projectName: body.projectName,
       projectDescription: body.projectDescription || '',
-      prizeAmount: body.prizeAmount?.toString() || '0',
       requiredSkills: body.requiredSkills || '',
       completionSkills: body.completionSkills || '',
       projectRepo: body.projectRepo || '',

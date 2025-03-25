@@ -39,6 +39,7 @@ import {
   logApiRequest 
 } from '@/app/api/api-utils'
 import { createSubmissionAction } from '@/actions/db/submissions-actions'
+import { createSubmissionOnChain } from '@/app/api/blockchain-utils'
 
 async function postCreateSubmission(req: NextRequest) {
   try {
@@ -57,7 +58,7 @@ async function postCreateSubmission(req: NextRequest) {
     }
 
     // 2) Resolve final freelancer address from "walletEns" or "walletAddress"
-    const { projectId, walletEns, walletAddress , prLink, submissionText } = body
+    const { projectId, walletEns, walletAddress, prLink, submissionText } = body
     console.log('projectId =>', projectId)
     console.log('walletEns =>', walletEns)
     console.log('walletAddress =>', walletAddress)
@@ -102,22 +103,64 @@ async function postCreateSubmission(req: NextRequest) {
       return errorResponse(`Could not resolve freelancer address`, 400)
     }
 
+    // Call the smart contract to create a submission on-chain
+    let blockchainResult = await createSubmissionOnChain(walletAddress, projectId);
+    
+    // If blockchain transaction failed, retry up to 3 times
+    if (!blockchainResult.success) {
+      console.log(`Blockchain submission creation attempt 1 failed for project ${projectId}. Retrying...`);
+      
+      // Try up to 2 more times (total of 3 attempts)
+      for (let attempt = 2; attempt <= 3; attempt++) {
+        blockchainResult = await createSubmissionOnChain(walletAddress, projectId);
+        
+        // If successful, break out of the retry loop
+        if (blockchainResult.success) {
+          console.log(`Blockchain submission creation succeeded on attempt ${attempt} for project ${projectId}`);
+          break;
+        }
+        
+        console.log(`Blockchain submission creation attempt ${attempt} failed for project ${projectId}. ${attempt < 3 ? "Retrying..." : "Giving up."}`);
+      }
+      
+      // If all attempts failed, return error
+      if (!blockchainResult.success) {
+        console.error(`All blockchain submission creation attempts failed for project ${projectId}:`, blockchainResult.error);
+        return errorResponse(
+          'Failed to create submission on blockchain after multiple attempts. Please try again later.',
+          500
+        );
+      }
+    }
+    
+    // Use the submission ID from the blockchain if available
+    const onChainSubmissionId = blockchainResult.submissionId;
+
     // 3) Call the createSubmissionAction with the final wallet
-    const result = await createSubmissionAction({
-      projectId : projectId,
+    const submissionData = {
+      projectId: projectId,
       freelancerWalletEns: walletEns,
       freelancerWalletAddress: walletAddress.toLowerCase(),
       submissionText: submissionText,
-      githubLink: prLink
-    })
+      githubLink: prLink,
+    };
+
+    const result = await createSubmissionAction(submissionData);
 
     if (!result.isSuccess) {
-      return errorResponse(result.message, 400)
+      return errorResponse(result.message, 400);
     }
+
+    // Add blockchain info to the response data
+    const responseData = {
+      ...result.data,
+      blockchainSubmissionId: onChainSubmissionId,
+      blockchainTxHash: blockchainResult.txHash
+    };
 
     // 4) Return success (HTTP 201)
     return successResponse(
-      result.data, 
+      responseData, 
       'Submission created successfully', 
       201
     )

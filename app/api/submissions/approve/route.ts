@@ -7,24 +7,35 @@ import { approveSubmissionAction } from '@/actions/db/projects-actions'
 import { db } from '@/db/db'
 import { projectSubmissionsTable } from '@/db/schema/project-submissions-schema'
 import { projectsTable } from '@/db/schema/projects-schema'
+import { approveSubmissionOnChain } from '@/app/api/blockchain-utils'
+import { withCors } from '@/lib/cors'
+import {
+  successResponse,
+  errorResponse,
+  serverErrorResponse,
+  logApiRequest
+} from '@/app/api/api-utils'
 
 /**
  * POST /api/submissions/approve
  * Body:
  * {
  *   "submissionId": string,
- *   "companyWallet": string  // must match the project owner
+ *   "walletEns": string,  // optional if no ENS
+ *   "walletAddress": string  // must match the project owner
  * }
  */
-export async function POST(req: NextRequest) {
+async function postApproveSubmission(req: NextRequest) {
   try {
+    logApiRequest('POST', '/api/submissions/approve', req.ip || 'unknown')
+    
     const body = await req.json()
     const { submissionId, walletEns, walletAddress } = body
 
     if (!submissionId || !walletEns || !walletAddress) {
-      return NextResponse.json(
-        { isSuccess: false, message: 'Missing submissionId or walletEns or walletAddress' },
-        { status: 400 }
+      return errorResponse(
+        'Missing submissionId or walletEns or walletAddress',
+        400
       )
     }
 
@@ -36,13 +47,41 @@ export async function POST(req: NextRequest) {
       .limit(1)
 
     if (!submission) {
-      return NextResponse.json(
-        { isSuccess: false, message: 'Submission not found' },
-        { status: 404 }
-      )
+      return errorResponse('Submission not found', 404)
     }
 
-    // 2) Approve
+    // First, call the blockchain to approve the submission
+    let blockchainSubmissionId = submission.blockchainSubmissionId || submissionId;
+    let blockchainResult = await approveSubmissionOnChain(walletAddress, blockchainSubmissionId);
+    
+    // If blockchain transaction failed, retry up to 3 times
+    if (!blockchainResult.success) {
+      console.log(`Blockchain approval attempt 1 failed for submission ${blockchainSubmissionId}. Retrying...`);
+      
+      // Try up to 2 more times (total of 3 attempts)
+      for (let attempt = 2; attempt <= 3; attempt++) {
+        blockchainResult = await approveSubmissionOnChain(walletAddress, blockchainSubmissionId);
+        
+        // If successful, break out of the retry loop
+        if (blockchainResult.success) {
+          console.log(`Blockchain approval succeeded on attempt ${attempt} for submission ${blockchainSubmissionId}`);
+          break;
+        }
+        
+        console.log(`Blockchain approval attempt ${attempt} failed for submission ${blockchainSubmissionId}. ${attempt < 3 ? "Retrying..." : "Giving up."}`);
+      }
+      
+      // If all attempts failed, return error
+      if (!blockchainResult.success) {
+        console.error(`All blockchain approval attempts failed for submission ${blockchainSubmissionId}:`, blockchainResult.error);
+        return errorResponse(
+          'Failed to approve submission on blockchain after multiple attempts. Please try again later.',
+          500
+        );
+      }
+    }
+
+    // 2) Call the database action to approve
     const result = await approveSubmissionAction({
       projectId: submission.projectId,
       freelancerWalletEns: submission.freelancerWalletEns,
@@ -52,30 +91,36 @@ export async function POST(req: NextRequest) {
     })
 
     if (!result.isSuccess) {
-      return NextResponse.json(
-        { isSuccess: false, message: result.message },
-        { status: 400 }
-      )
+      return errorResponse(result.message || 'Failed to approve submission', 400)
     }
 
-    // 3) Mark submission as merged
+    // 3) Mark submission as merged and awarded
     await db
       .update(projectSubmissionsTable)
       .set({ 
         isMerged: true,
-        status: 'awarded'
-       })
+        status: 'awarded',
+        blockchainTxHash: blockchainResult.txHash
+      })
       .where(eq(projectSubmissionsTable.submissionId, submissionId))
 
-    return NextResponse.json(
-      { isSuccess: true, message: 'Submission approved successfully' },
-      { status: 200 }
+    // 4) Return success
+    return successResponse(
+      {
+        submissionId,
+        blockchainTxHash: blockchainResult.txHash
+      },
+      'Submission approved successfully'
     )
-  } catch (error) {
+  } catch (error: any) {
     console.error('[POST /api/submissions/approve] Error:', error)
-    return NextResponse.json(
-      { isSuccess: false, message: 'Internal server error' },
-      { status: 500 }
-    )
+    return serverErrorResponse(error)
   }
 }
+
+export const POST = withCors(postApproveSubmission)
+
+// For CORS preflight
+export const OPTIONS = withCors(async () => {
+  return new Response(null, { status: 204 })
+})

@@ -46,13 +46,18 @@ export async function POST(req: NextRequest) {
     // 1) Mark isMerged = true in DB
     await db
       .update(projectSubmissionsTable)
-      .set({ isMerged: true })
-      .where(eq(projectSubmissionsTable.id, submission.id))
+      .set({ 
+        isMerged: true,
+        status: "awarded",
+        blockchainSubmissionId: submission.blockchainSubmissionId
+      })
+      .where(eq(projectSubmissionsTable.submissionId, submission.submissionId))
 
     // 2) Attempt awarding tokens + completion skills
     const result = await autoAwardOnPrMergeAction({
       projectId: submission.projectId,
-      freelancerAddress: submission.freelancerAddress
+      freelancerWalletEns: submission.freelancerWalletEns,
+      freelancerWalletAddress: submission.freelancerWalletAddress
     })
 
     return NextResponse.json({ message: result.message }, { status: 200 })
