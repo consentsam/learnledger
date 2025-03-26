@@ -126,4 +126,6 @@ function formatProfileData(row: any, role: string) {
 export const POST = withCors(fetchUserProfile)
 
 // Handle OPTIONS for CORS preflight
-export const OPTIONS = withCors(async () => NextResponse.json({}, { status: 204 })) 
+export const OPTIONS = withCors(async (req: NextRequest) => {
+  return new Response(null, { status: 204 });
+}) 

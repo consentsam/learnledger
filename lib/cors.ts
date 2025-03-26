@@ -12,8 +12,7 @@ const allowedOrigins = [
   'https://learnledger.xyz',
   'https://www.learnledger.xyz',
   'https://api.learnledger.xyz',
-  'https://www.api.learnledger.xyz',
-  '*' // Temporarily allow all origins while debugging
+  'https://www.api.learnledger.xyz'
 ];
 
 type CorsOptions = {
@@ -30,7 +29,7 @@ export function addCorsHeaders(
   res: NextResponse, 
   options: CorsOptions = {}
 ): NextResponse {
-  const origin = req.headers.get('origin') || '*';
+  const origin = req.headers.get('origin');
   
   // Default options with expanded headers
   const defaultOptions: Required<CorsOptions> = {
@@ -46,11 +45,7 @@ export function addCorsHeaders(
       'Date',
       'X-Api-Version',
       'Origin',
-      'Cache-Control',
-      'Access-Control-Allow-Origin',
-      'Access-Control-Allow-Methods',
-      'Access-Control-Allow-Headers',
-      'Access-Control-Allow-Credentials'
+      'Cache-Control'
     ],
     allowCredentials: true,
   };
@@ -62,21 +57,17 @@ export function addCorsHeaders(
     allowCredentials,
   } = { ...defaultOptions, ...options };
 
-  // Always allow the request during development or if origin is in allowedOrigins
-  const isAllowed = process.env.NODE_ENV === 'development' || 
-                  allowedOrigins.includes(origin) ||
-                  allowedOrigins.includes('*') ||
-                  origin === '';
+  // Check if the origin is allowed
+  const isAllowed = !origin || allowedOrigins.includes(origin);
   
   if (isAllowed) {
-    // Set CORS headers
-    res.headers.set('Access-Control-Allow-Origin', '*');  // Temporarily set to * for debugging
+    // Set CORS headers with the actual origin if it's allowed
+    res.headers.set('Access-Control-Allow-Origin', origin || '*');
     res.headers.set('Access-Control-Allow-Methods', allowedMethods.join(', '));
     res.headers.set('Access-Control-Allow-Headers', allowedHeaders.join(', '));
     res.headers.set('Access-Control-Max-Age', '86400'); // 24 hours
     
-    // Only set credentials if we're not using wildcard origin
-    if (allowCredentials && origin !== '*') {
+    if (allowCredentials && origin) {
       res.headers.set('Access-Control-Allow-Credentials', 'true');
     }
   }
@@ -92,12 +83,19 @@ export function withCors(
   options: CorsOptions = {}
 ) {
   return async function corsHandler(req: NextRequest) {
+    const origin = req.headers.get('origin');
+    const isAllowed = !origin || allowedOrigins.includes(origin);
+
     // Handle preflight OPTIONS request
     if (req.method === 'OPTIONS') {
-      const response = new Response(null, { 
+      if (!isAllowed) {
+        return new Response(null, { status: 403 });
+      }
+
+      return new Response(null, { 
         status: 204,
         headers: {
-          'Access-Control-Allow-Origin': '*', // Temporarily set to * for debugging
+          'Access-Control-Allow-Origin': origin || '*',
           'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD',
           'Access-Control-Allow-Headers': [
             'Content-Type',
@@ -110,18 +108,18 @@ export function withCors(
             'Date',
             'X-Api-Version',
             'Origin',
-            'Cache-Control',
-            'Access-Control-Allow-Origin',
-            'Access-Control-Allow-Methods',
-            'Access-Control-Allow-Headers',
-            'Access-Control-Allow-Credentials'
+            'Cache-Control'
           ].join(', '),
           'Access-Control-Max-Age': '86400', // 24 hours cache for preflight
+          ...(origin && { 'Access-Control-Allow-Credentials': 'true' })
         }
       });
-      return response;
     }
     
+    if (!isAllowed) {
+      return new Response('Not allowed by CORS', { status: 403 });
+    }
+
     try {
       // Call the original handler
       const response = await handler(req);
