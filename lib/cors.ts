@@ -1,24 +1,92 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// CORS headers for allowed origins
-const allowedOrigins = [
-  'http://localhost:3000',
-  'http://localhost:3001',
-  'http://localhost:3002',
-  'http://localhost:3003',
-  // Production domains
-  'https://learn-ledger-api.vercel.app',
-  'https://learn-ledger.vercel.app',
-  'https://learnledger.xyz',
-  'https://www.learnledger.xyz',
-  'https://api.learnledger.xyz',
-  'https://www.api.learnledger.xyz'
+// Environment-based CORS configuration
+const CORS_CONFIG = {
+  development: {
+    origins: [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://localhost:3002',
+      'http://localhost:3003',
+      'http://127.0.0.1:3000',
+      'http://127.0.0.1:3001',
+      'http://127.0.0.1:3002',
+      'http://127.0.0.1:3003',
+    ],
+    credentials: true
+  },
+  production: {
+    origins: [
+      'https://learn-ledger-api.vercel.app',
+      'https://learn-ledger.vercel.app',
+      'https://learnledger.xyz',
+      'https://www.learnledger.xyz',
+      'https://api.learnledger.xyz',
+      'https://www.api.learnledger.xyz',
+      // Add subdomains to handle all possible variations
+      'https://*.learnledger.xyz'
+    ],
+    credentials: true
+  }
+};
+
+// Get allowed origins based on environment
+const getAllowedOrigins = () => {
+  const env = process.env.NODE_ENV || 'development';
+  return CORS_CONFIG[env as keyof typeof CORS_CONFIG].origins;
+};
+
+// Check if origin matches including wildcard support
+const isOriginAllowed = (origin: string | null): boolean => {
+  if (!origin) return true; // Allow requests with no origin
+  
+  const allowedOrigins = getAllowedOrigins();
+  
+  return allowedOrigins.some(allowedOrigin => {
+    if (allowedOrigin === origin) return true;
+    if (allowedOrigin.includes('*')) {
+      const pattern = new RegExp('^' + allowedOrigin.replace('*.', '([^.]+\\.)+') + '$');
+      return pattern.test(origin);
+    }
+    return false;
+  });
+};
+
+// Comprehensive list of allowed headers
+const DEFAULT_ALLOWED_HEADERS = [
+  'Content-Type',
+  'Authorization',
+  'X-Requested-With',
+  'Accept',
+  'Accept-Version',
+  'Content-Length',
+  'Content-MD5',
+  'Date',
+  'X-Api-Version',
+  'Origin',
+  'Cache-Control',
+  'If-Match',
+  'If-None-Match',
+  'If-Modified-Since',
+  'If-Unmodified-Since',
+  'X-Requested-With',
+  // Client Hints headers
+  'Sec-CH-UA',
+  'Sec-CH-UA-Platform',
+  'Sec-CH-UA-Platform-Version',
+  'Sec-CH-UA-Mobile',
+  'Sec-CH-UA-Model',
+  'Sec-CH-UA-Full-Version',
+  'Sec-CH-UA-Full-Version-List',
+  // Custom headers if needed
+  'X-Custom-Header'
 ];
 
 type CorsOptions = {
   allowedMethods?: string[];
   allowedHeaders?: string[];
   allowCredentials?: boolean;
+  maxAge?: number;
 };
 
 /**
@@ -26,46 +94,32 @@ type CorsOptions = {
  */
 export function addCorsHeaders(
   req: NextRequest,
-  res: NextResponse, 
+  res: NextResponse,
   options: CorsOptions = {}
 ): NextResponse {
   const origin = req.headers.get('origin');
   
-  // Default options with expanded headers
   const defaultOptions: Required<CorsOptions> = {
     allowedMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
-    allowedHeaders: [
-      'Content-Type', 
-      'Authorization',
-      'X-Requested-With',
-      'Accept',
-      'Accept-Version',
-      'Content-Length',
-      'Content-MD5',
-      'Date',
-      'X-Api-Version',
-      'Origin',
-      'Cache-Control'
-    ],
-    allowCredentials: true,
+    allowedHeaders: DEFAULT_ALLOWED_HEADERS,
+    allowCredentials: CORS_CONFIG[process.env.NODE_ENV as keyof typeof CORS_CONFIG]?.credentials ?? true,
+    maxAge: 86400 // 24 hours
   };
   
-  // Merge provided options with defaults
   const {
     allowedMethods,
     allowedHeaders,
     allowCredentials,
+    maxAge
   } = { ...defaultOptions, ...options };
 
-  // Check if the origin is allowed
-  const isAllowed = !origin || allowedOrigins.includes(origin);
-  
-  if (isAllowed) {
-    // Set CORS headers with the actual origin if it's allowed
+  if (isOriginAllowed(origin)) {
+    // Set CORS headers
     res.headers.set('Access-Control-Allow-Origin', origin || '*');
     res.headers.set('Access-Control-Allow-Methods', allowedMethods.join(', '));
     res.headers.set('Access-Control-Allow-Headers', allowedHeaders.join(', '));
-    res.headers.set('Access-Control-Max-Age', '86400'); // 24 hours
+    res.headers.set('Access-Control-Max-Age', maxAge.toString());
+    res.headers.set('Vary', 'Origin'); // Important for CDN caching
     
     if (allowCredentials && origin) {
       res.headers.set('Access-Control-Allow-Credentials', 'true');
@@ -79,66 +133,65 @@ export function addCorsHeaders(
  * Middleware to handle CORS preflight requests and add CORS headers to responses
  */
 export function withCors(
-  handler: (req: NextRequest) => Promise<NextResponse | Response>, 
+  handler: (req: NextRequest) => Promise<NextResponse | Response>,
   options: CorsOptions = {}
 ) {
   return async function corsHandler(req: NextRequest) {
     const origin = req.headers.get('origin');
-    const isAllowed = !origin || allowedOrigins.includes(origin);
 
-    // Handle preflight OPTIONS request
-    if (req.method === 'OPTIONS') {
-      if (!isAllowed) {
-        return new Response(null, { status: 403 });
-      }
-
-      return new Response(null, { 
-        status: 204,
+    // Early return if the origin is not allowed
+    if (origin && !isOriginAllowed(origin)) {
+      return new Response('Not allowed by CORS', { 
+        status: 403,
         headers: {
-          'Access-Control-Allow-Origin': origin || '*',
-          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD',
-          'Access-Control-Allow-Headers': [
-            'Content-Type',
-            'Authorization',
-            'X-Requested-With',
-            'Accept',
-            'Accept-Version',
-            'Content-Length',
-            'Content-MD5',
-            'Date',
-            'X-Api-Version',
-            'Origin',
-            'Cache-Control'
-          ].join(', '),
-          'Access-Control-Max-Age': '86400', // 24 hours cache for preflight
-          ...(origin && { 'Access-Control-Allow-Credentials': 'true' })
+          'Content-Type': 'text/plain',
         }
       });
     }
-    
-    if (!isAllowed) {
-      return new Response('Not allowed by CORS', { status: 403 });
+
+    // Handle preflight OPTIONS request
+    if (req.method === 'OPTIONS') {
+      const defaultOptions: Required<CorsOptions> = {
+        allowedMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
+        allowedHeaders: DEFAULT_ALLOWED_HEADERS,
+        allowCredentials: CORS_CONFIG[process.env.NODE_ENV as keyof typeof CORS_CONFIG]?.credentials ?? true,
+        maxAge: 86400
+      };
+
+      const {
+        allowedMethods,
+        allowedHeaders,
+        allowCredentials,
+        maxAge
+      } = { ...defaultOptions, ...options };
+
+      return new Response(null, {
+        status: 204,
+        headers: {
+          'Access-Control-Allow-Origin': origin || '*',
+          'Access-Control-Allow-Methods': allowedMethods.join(', '),
+          'Access-Control-Allow-Headers': allowedHeaders.join(', '),
+          'Access-Control-Max-Age': maxAge.toString(),
+          'Vary': 'Origin',
+          ...(allowCredentials && origin ? { 'Access-Control-Allow-Credentials': 'true' } : {})
+        }
+      });
     }
 
     try {
-      // Call the original handler
       const response = await handler(req);
-      
-      // Add CORS headers to the response
       return addCorsHeaders(req, response as NextResponse, options);
     } catch (error) {
       console.error('CORS middleware error:', error);
       
-      // Create a standard error response
       const errorResponse = NextResponse.json(
-        { 
-          isSuccess: false, 
-          message: error instanceof Error ? error.message : 'Internal server error' 
-        }, 
+        {
+          isSuccess: false,
+          message: error instanceof Error ? error.message : 'Internal server error'
+        },
         { status: 500 }
       );
       
-      // Add CORS headers even to error responses
       return addCorsHeaders(req, errorResponse, options);
     }
   };

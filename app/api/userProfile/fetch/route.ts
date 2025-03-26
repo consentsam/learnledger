@@ -123,9 +123,17 @@ function formatProfileData(row: any, role: string) {
 }
 
 // Export POST handler with CORS middleware
-export const POST = withCors(fetchUserProfile)
+export const POST = withCors(fetchUserProfile, {
+  maxAge: 86400, // 24 hours
+  allowedMethods: ['POST', 'OPTIONS', 'GET'],
+  allowCredentials: true
+});
 
 // Handle OPTIONS for CORS preflight
 export const OPTIONS = withCors(async (req: NextRequest) => {
   return new Response(null, { status: 204 });
-}) 
+}, {
+  maxAge: 86400, // 24 hours
+  allowedMethods: ['POST', 'OPTIONS', 'GET'],
+  allowCredentials: true
+}); 
