@@ -6,16 +6,14 @@ const allowedOrigins = [
   'http://localhost:3001',
   'http://localhost:3002',
   'http://localhost:3003',
-  // Add your production domains if needed
+  // Production domains
   'https://learn-ledger-api.vercel.app',
   'https://learn-ledger.vercel.app',
-  // '*', // Allow all origins temporarily for development - REMOVED as it's not needed anymore
-  // TODO: Replace the line above with your specific frontend production domains
-  // 'https://your-frontend-domain.com',
   'https://learnledger.xyz',
   'https://www.learnledger.xyz',
   'https://api.learnledger.xyz',
   'https://www.api.learnledger.xyz',
+  '*' // Temporarily allow all origins while debugging
 ];
 
 type CorsOptions = {
@@ -32,18 +30,27 @@ export function addCorsHeaders(
   res: NextResponse, 
   options: CorsOptions = {}
 ): NextResponse {
-  const origin = req.headers.get('origin') || '';
+  const origin = req.headers.get('origin') || '*';
   
-  // Default options
+  // Default options with expanded headers
   const defaultOptions: Required<CorsOptions> = {
-    allowedMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
     allowedHeaders: [
       'Content-Type', 
-      'Authorization', 
+      'Authorization',
       'X-Requested-With',
       'Accept',
+      'Accept-Version',
+      'Content-Length',
+      'Content-MD5',
+      'Date',
+      'X-Api-Version',
       'Origin',
-      'Cache-Control'
+      'Cache-Control',
+      'Access-Control-Allow-Origin',
+      'Access-Control-Allow-Methods',
+      'Access-Control-Allow-Headers',
+      'Access-Control-Allow-Credentials'
     ],
     allowCredentials: true,
   };
@@ -54,22 +61,22 @@ export function addCorsHeaders(
     allowedHeaders,
     allowCredentials,
   } = { ...defaultOptions, ...options };
-  
-  // Check if the origin is allowed or if we're in development
+
+  // Always allow the request during development or if origin is in allowedOrigins
   const isAllowed = process.env.NODE_ENV === 'development' || 
                   allowedOrigins.includes(origin) ||
                   allowedOrigins.includes('*') ||
-                  origin === ''; // Allow requests with no origin (like mobile apps or curl)
+                  origin === '';
   
   if (isAllowed) {
     // Set CORS headers
-    // If wildcard is in allowed origins and the specific origin isn't, use wildcard
-    const allowedOrigin = allowedOrigins.includes('*') && !allowedOrigins.includes(origin) ? '*' : origin || '*';
-    res.headers.set('Access-Control-Allow-Origin', allowedOrigin);
+    res.headers.set('Access-Control-Allow-Origin', '*');  // Temporarily set to * for debugging
     res.headers.set('Access-Control-Allow-Methods', allowedMethods.join(', '));
     res.headers.set('Access-Control-Allow-Headers', allowedHeaders.join(', '));
+    res.headers.set('Access-Control-Max-Age', '86400'); // 24 hours
     
-    if (allowCredentials) {
+    // Only set credentials if we're not using wildcard origin
+    if (allowCredentials && origin !== '*') {
       res.headers.set('Access-Control-Allow-Credentials', 'true');
     }
   }
@@ -87,60 +94,32 @@ export function withCors(
   return async function corsHandler(req: NextRequest) {
     // Handle preflight OPTIONS request
     if (req.method === 'OPTIONS') {
-      // Create a new Response object with no body and 204 status
-      // This is the correct way to handle a preflight request
-      const response = new Response(null, { status: 204 });
-      
-      // Add CORS headers directly to the response headers
-      const origin = req.headers.get('origin') || '*';
-      const defaultOptions: Required<CorsOptions> = {
-        allowedMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-        allowedHeaders: [
-          'Content-Type', 
-          'Authorization', 
-          'X-Requested-With',
-          'Accept',
-          'Accept-Version',
-          'Content-Length',
-          'Content-MD5',
-          'Date',
-          'X-Api-Version',
-          'Origin',
-          'Cache-Control'
-        ],
-        allowCredentials: true,
-      };
-      
-      // Merge with custom options
-      const {
-        allowedMethods,
-        allowedHeaders,
-        allowCredentials,
-      } = { ...defaultOptions, ...options };
-      
-      // Set CORS headers
-      // Determine the appropriate Access-Control-Allow-Origin value
-      const isAllowed = process.env.NODE_ENV === 'development' || 
-                        allowedOrigins.includes(origin) ||
-                        allowedOrigins.includes('*') ||
-                        origin === '';
-                        
-      if (isAllowed) {
-        const allowedOrigin = allowedOrigins.includes('*') && !allowedOrigins.includes(origin) ? '*' : origin;
-        response.headers.set('Access-Control-Allow-Origin', allowedOrigin);
-        response.headers.set('Access-Control-Allow-Methods', allowedMethods.join(', '));
-        response.headers.set('Access-Control-Allow-Headers', allowedHeaders.join(', '));
-        
-        if (allowCredentials) {
-          response.headers.set('Access-Control-Allow-Credentials', 'true');
+      const response = new Response(null, { 
+        status: 204,
+        headers: {
+          'Access-Control-Allow-Origin': '*', // Temporarily set to * for debugging
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD',
+          'Access-Control-Allow-Headers': [
+            'Content-Type',
+            'Authorization',
+            'X-Requested-With',
+            'Accept',
+            'Accept-Version',
+            'Content-Length',
+            'Content-MD5',
+            'Date',
+            'X-Api-Version',
+            'Origin',
+            'Cache-Control',
+            'Access-Control-Allow-Origin',
+            'Access-Control-Allow-Methods',
+            'Access-Control-Allow-Headers',
+            'Access-Control-Allow-Credentials'
+          ].join(', '),
+          'Access-Control-Max-Age': '86400', // 24 hours cache for preflight
         }
-        
-        return response;
-      }
-      
-      // If origin is not allowed, return 403 Forbidden
-      return new Response(null, { status: 403 });
-      
+      });
+      return response;
     }
     
     try {
