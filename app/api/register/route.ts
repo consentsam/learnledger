@@ -119,6 +119,8 @@ async function registerHandler(req: NextRequest, parsedBody?: any) {
       blockchainResult = await registerUserAsFreelancer(body.walletAddress);
     }
 
+    console.log('blockchainResult =>', blockchainResult);
+
     // If blockchain transaction failed, retry up to 3 times
     if (!blockchainResult?.success) {
       console.log(`Blockchain registration attempt 1 failed for ${body.walletAddress} as ${body.role}. Retrying...`);
