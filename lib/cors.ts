@@ -7,9 +7,15 @@ const allowedOrigins = [
   'http://localhost:3002',
   'http://localhost:3003',
   // Add your production domains if needed
+  'https://learn-ledger-api.vercel.app',
+  'https://learn-ledger.vercel.app',
   // '*', // Allow all origins temporarily for development - REMOVED as it's not needed anymore
   // TODO: Replace the line above with your specific frontend production domains
   // 'https://your-frontend-domain.com',
+  'https://learnledger.xyz',
+  'https://www.learnledger.xyz',
+  'https://api.learnledger.xyz',
+  'https://www.api.learnledger.xyz',
 ];
 
 type CorsOptions = {
