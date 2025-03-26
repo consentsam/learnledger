@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { addCorsHeaders } from '@/lib/cors';
 
 // Standard API response format
 export interface ApiResponse<T = any> {
@@ -10,8 +11,8 @@ export interface ApiResponse<T = any> {
 }
 
 // Success response helper
-export function successResponse<T>(data?: T, message?: string, status = 200) {
-  return NextResponse.json(
+export function successResponse<T>(data?: T, message?: string, status = 200, req?: NextRequest) {
+  const response = NextResponse.json(
     { 
       isSuccess: true, 
       message, 
@@ -19,11 +20,14 @@ export function successResponse<T>(data?: T, message?: string, status = 200) {
     } as ApiResponse<T>,
     { status }
   );
+  
+  // Add CORS headers if request is provided
+  return req ? addCorsHeaders(req, response) : response;
 }
 
 // Error response helper
-export function errorResponse(message: string, status = 400, errors?: Record<string, string[]>) {
-  return NextResponse.json(
+export function errorResponse(message: string, status = 400, errors?: Record<string, string[]>, req?: NextRequest) {
+  const response = NextResponse.json(
     { 
       isSuccess: false, 
       message, 
@@ -31,6 +35,9 @@ export function errorResponse(message: string, status = 400, errors?: Record<str
     } as ApiResponse,
     { status }
   );
+  
+  // Add CORS headers if request is provided
+  return req ? addCorsHeaders(req, response) : response;
 }
 
 // Custom debug info interface
@@ -46,7 +53,7 @@ export interface ErrorDetails {
 }
 
 // Internal server error helper (with optional custom debug info)
-export function serverErrorResponse(error: any, customDetails?: ErrorDetails) {
+export function serverErrorResponse(error: any, customDetails?: ErrorDetails, req?: NextRequest) {
   // Default error details
   const defaultDetails = {
     message: error?.message || 'Unknown error',
@@ -65,7 +72,7 @@ export function serverErrorResponse(error: any, customDetails?: ErrorDetails) {
   
   console.error('[API Error]:', JSON.stringify(errorDetails, null, 2));
   
-  return NextResponse.json(
+  const response = NextResponse.json(
     { 
       isSuccess: false, 
       message: customDetails?.message || 'Internal server error',
@@ -74,6 +81,9 @@ export function serverErrorResponse(error: any, customDetails?: ErrorDetails) {
     } as ApiResponse,
     { status: 500 }
   );
+  
+  // Add CORS headers if request is provided
+  return req ? addCorsHeaders(req, response) : response;
 }
 
 // Validator helper for checking required fields

@@ -23,10 +23,10 @@ async function fetchUserProfile(req: NextRequest) {
     // We do minimal validation – must have role
     const v = validateRequiredFields(body, ['role'])
     if (!v.isValid) {
-      return errorResponse(`Missing field(s): ${v.missingFields.join(', ')}`, 400)
+      return errorResponse(`Missing field(s): ${v.missingFields.join(', ')}`, 400, undefined, req)
     }
     if (body.role !== 'freelancer' && body.role !== 'company') {
-      return errorResponse('role must be either freelancer or company', 400)
+      return errorResponse('role must be either freelancer or company', 400, undefined, req)
     }
 
     const role = body.role.toLowerCase()
@@ -34,21 +34,21 @@ async function fetchUserProfile(req: NextRequest) {
     const walletEns = (body.walletEns || '').toLowerCase().trim()
 
     if (!walletAddress && !walletEns) {
-      return errorResponse('Must provide at least one: `walletAddress` or `walletEns`', 400)
+      return errorResponse('Must provide at least one: `walletAddress` or `walletEns`', 400, undefined, req)
     }
 
     // Fetch from DB
     const profile = await fetchProfileFromDb(role, walletAddress, walletEns)
     if (!profile) {
-      return errorResponse(`${role} profile not found`, 404)
+      return errorResponse(`${role} profile not found`, 404, undefined, req)
     }
 
     // Return final shape
     const formatted = formatProfileData(profile, role)
-    return successResponse(formatted)
+    return successResponse(formatted, undefined, 200, req)
   } catch (error) {
     console.error('[POST /api/userProfile/fetch] error =>', error)
-    return serverErrorResponse(error)
+    return serverErrorResponse(error, undefined, req)
   }
 }
 
