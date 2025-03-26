@@ -143,6 +143,8 @@ async function postCreateSubmission(req: NextRequest) {
       freelancerWalletAddress: walletAddress.toLowerCase(),
       submissionText: submissionText,
       githubLink: prLink,
+      onChainSubmissionId: onChainSubmissionId,
+      blockchainTxHash: blockchainResult.txHash,
     };
 
     const result = await createSubmissionAction(submissionData);
@@ -154,7 +156,6 @@ async function postCreateSubmission(req: NextRequest) {
     // Add blockchain info to the response data
     const responseData = {
       ...result.data,
-      blockchainSubmissionId: onChainSubmissionId,
       blockchainTxHash: blockchainResult.txHash
     };
 

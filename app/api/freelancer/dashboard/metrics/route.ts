@@ -42,7 +42,7 @@ import { freelancerTable } from '@/db/schema/freelancer-schema'
 import { projectSubmissionsTable } from '@/db/schema/project-submissions-schema'
 import { projectsTable } from '@/db/schema/projects-schema'
 import { userBalancesTable } from '@/db/schema/user-balances-schema'
-import { eq, sql } from 'drizzle-orm'
+import { eq, sql, and } from 'drizzle-orm'
 
 async function handleFreelancerMetrics(req: NextRequest) {
   // Add request ID for correlation in logs
@@ -298,45 +298,18 @@ async function handleFreelancerMetrics(req: NextRequest) {
     }, { status: 200 })
 
   } catch (error: any) {
-    console.error(`[Freelancer Metrics ${requestId}] Error:`, error)
-    
-    // Provide more detailed error information for debugging
-    let errorMessage = 'Internal server error';
-    let debugInfo: any = null;
-    
-    if (error.message && error.message.includes('syntax error')) {
-      errorMessage = 'Database syntax error. This might be due to a mismatch between code and schema.';
-      debugInfo = {
-        message: error.message,
-        stack: error.stack,
-        hint: 'Check column names in SQL queries against your schema definitions.',
-        requestId
-      };
-    } else if (error.code === '42P01') {
-      errorMessage = 'Relation does not exist error. Table might be missing.';
-      debugInfo = {
-        message: error.message,
-        details: error.detail || 'No additional details',
-        requestId
-      };
-    } else {
-      // Generic error handling
-      debugInfo = {
-        message: error.message || 'Unknown error',
-        stack: error.stack,
-        requestId
-      };
-    }
-    
+    console.error(`[Freelancer Metrics ${requestId}] Unhandled error:`, error)
     return NextResponse.json({
       isSuccess: false,
-      message: errorMessage,
-      ...(debugInfo ? { debugInfo } : {})
+      message: error.message || 'Internal server error'
     }, { status: 500 })
   }
 }
 
-// Export with CORS
-export const GET = withCors(handleFreelancerMetrics)
 export const POST = withCors(handleFreelancerMetrics)
-export const OPTIONS = withCors(async () => new Response(null, { status: 204 }))
+export const GET = withCors(handleFreelancerMetrics)
+
+// For CORS preflight
+export const OPTIONS = withCors(async () => {
+  return new Response(null, { status: 204 })
+})
