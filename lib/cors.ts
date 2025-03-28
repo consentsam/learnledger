@@ -12,18 +12,33 @@ const CORS_CONFIG = {
       'http://127.0.0.1:3001',
       'http://127.0.0.1:3002',
       'http://127.0.0.1:3003',
-    ],
-    credentials: true
-  },
-  production: {
-    origins: [
+      // Add production URLs to development config to allow local-to-prod requests
       'https://learn-ledger-api.vercel.app',
       'https://learn-ledger.vercel.app',
       'https://learnledger.xyz',
       'https://www.learnledger.xyz',
       'https://api.learnledger.xyz',
       'https://www.api.learnledger.xyz',
-      // Add subdomains to handle all possible variations
+      'https://*.learnledger.xyz'
+    ],
+    credentials: true
+  },
+  production: {
+    origins: [
+      'http://localhost:3000',  // Allow localhost in production for development
+      'http://localhost:3001',
+      'http://localhost:3002',
+      'http://localhost:3003',
+      'http://127.0.0.1:3000',
+      'http://127.0.0.1:3001',
+      'http://127.0.0.1:3002',
+      'http://127.0.0.1:3003',
+      'https://learn-ledger-api.vercel.app',
+      'https://learn-ledger.vercel.app',
+      'https://learnledger.xyz',
+      'https://www.learnledger.xyz',
+      'https://api.learnledger.xyz',
+      'https://www.api.learnledger.xyz',
       'https://*.learnledger.xyz'
     ],
     credentials: true
